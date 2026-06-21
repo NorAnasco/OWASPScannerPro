@@ -1,0 +1,20 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+reports/
+*.pdf
+*.log
+/tmp/nikto_out.csv
+.DS_Store
+
+# Base de données locale (si applicable)
+*.db
+*.sqlite3
+
+# Fichiers système ou de l'éditeur
+.vscode/
+.idea/
+Thumbs.db

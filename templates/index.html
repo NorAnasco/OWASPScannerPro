@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OWASP Scanner Pro</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0a0c10;--bg2:#111318;--bg3:#1a1d25;--bg4:#222630;
+  --border:#2a2e3a;--border2:#363b4a;
+  --text:#e8eaf0;--text2:#9098b0;--text3:#5a6075;
+  --red:#ff4757;--red2:#ff6b7a;--redbg:rgba(255,71,87,0.1);--redbg2:rgba(255,71,87,0.05);
+  --orange:#ff9f43;--orangebg:rgba(255,159,67,0.1);
+  --yellow:#ffd32a;--yellowbg:rgba(255,211,42,0.08);
+  --green:#2ed573;--greenbg:rgba(46,213,115,0.1);
+  --blue:#5352ed;--bluebg:rgba(83,82,237,0.1);
+  --cyan:#1e90ff;--cyanbg:rgba(30,144,255,0.1);
+  --radius:8px;--radius2:12px;
+  --font:'Syne',sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+body.light{
+  --bg:#f6f7fb;--bg2:#ffffff;--bg3:#eef1f7;--bg4:#e4e8f0;
+  --border:#d7dce6;--border2:#c7cedb;
+  --text:#182033;--text2:#526071;--text3:#7b8798;
+  --red:#d92d43;--red2:#b91c32;--redbg:rgba(217,45,67,0.10);--redbg2:rgba(217,45,67,0.05);
+  --orange:#c46b00;--orangebg:rgba(196,107,0,0.10);
+  --yellow:#b77900;--yellowbg:rgba(183,121,0,0.12);
+  --green:#138a4a;--greenbg:rgba(19,138,74,0.10);
+  --blue:#3454d1;--bluebg:rgba(52,84,209,0.10);
+  --cyan:#0067c2;--cyanbg:rgba(0,103,194,0.10);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;font-size:15px}
+a{color:var(--cyan)}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.logo{padding:20px 18px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.logo-icon{width:32px;height:32px;background:var(--red);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.logo-text{font-size:14px;font-weight:700;color:var(--text);letter-spacing:.03em}
+.logo-sub{font-size:10px;color:var(--text3);font-family:var(--mono)}
+.nav{padding:12px 0;flex:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 18px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:600;transition:background .15s,color .15s;border-left:2px solid transparent}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--redbg2);color:var(--red2);border-left-color:var(--red)}
+.nav-icon{font-size:14px;width:18px;text-align:center}
+.nav-section{padding:14px 18px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.sidebar-footer{padding:12px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);font-family:var(--mono)}
+.sidebar.collapsed{width:0;overflow:hidden;min-width:0;padding:0;border:none}
+.sidebar-toggle{display:none;position:fixed;top:16px;left:230px;z-index:100;width:34px;height:34px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;font-size:16px;align-items:center;justify-content:center;transition:left .3s}
+.sidebar-toggle:hover{background:var(--bg4);color:var(--text)}
+.header{padding:18px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px}
+.header-left{display:flex;align-items:center;gap:12px}
+.header h1{font-size:18px;font-weight:700;white-space:nowrap}
+.header-meta{font-size:12px;color:var(--text3);font-family:var(--mono);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.content{padding:24px 28px;flex:1}
+.panel{display:none}
+.panel.active{display:block}
+.url-bar{display:flex;gap:10px;margin-bottom:24px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:6px 6px 6px 14px;align-items:center}
+.url-bar input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;font-family:var(--mono)}
+.url-bar input::placeholder{color:var(--text3)}
+.btn-scan{padding:10px 22px;background:var(--red);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);letter-spacing:.03em;transition:opacity .15s;white-space:nowrap}
+.btn-scan i{margin-right:6px;vertical-align:-1px}
+.btn-scan:hover{opacity:.85}
+.btn-scan:disabled{opacity:.4;cursor:not-allowed}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:14px 16px}
+.card-sm{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:border-color .15s}
+.card-sm:hover{border-color:var(--border2)}
+.card-sm.on{border-color:var(--red);background:var(--redbg2)}
+.card-sm.on-blue{border-color:var(--blue);background:var(--bluebg)}
+.owasp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:20px}
+.ow-id{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--text3);margin-bottom:4px}
+.ow-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.ow-desc{font-size:11px;color:var(--text2);line-height:1.5}
+.ow-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.sev-badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;font-family:var(--mono)}
+.sev-c{background:rgba(255,71,87,.2);color:var(--red2)}
+.sev-h{background:rgba(255,159,67,.2);color:var(--orange)}
+.sev-m{background:rgba(255,211,42,.15);color:var(--yellow)}
+.chk-mark{width:14px;height:14px;border:1px solid var(--border2);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;transition:all .15s}
+.card-sm.on .chk-mark{background:var(--red);border-color:var(--red);color:#fff}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:24px}
+.tool-icon2{font-size:24px;margin-bottom:8px;display:flex;align-items:center;justify-content:center}
+.tool-name2{font-size:14px;font-weight:700;margin-bottom:4px}
+.tool-desc2{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
+.tool-tags2{display:flex;flex-wrap:wrap;gap:4px}
+.tag2{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg4);color:var(--text2)}
+.progress-wrap{margin-bottom:24px}
+.progress-header{display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px}
+.progress-lbl{color:var(--text2)}
+.progress-pct{font-family:var(--mono);color:var(--red2);font-weight:600}
+.progress-track{height:4px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:14px}
+.progress-fill{height:100%;background:var(--red);border-radius:4px;transition:width .5s ease}
+.phases{display:flex;flex-direction:column;gap:7px}
+.phase-row2{display:flex;align-items:center;gap:10px}
+.ph-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.ph-done{background:var(--green)}
+.ph-run{background:var(--orange);animation:pulse2 .7s infinite}
+.ph-wait{background:var(--bg4)}
+@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.3}}
+.ph-txt{font-size:12px;color:var(--text2);font-family:var(--mono)}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.stat-c{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;text-align:center}
+.stat-num2{font-size:26px;font-weight:700;font-family:var(--mono)}
+.stat-lbl2{font-size:11px;color:var(--text3);margin-top:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.num-red{color:var(--red)}.num-orange{color:var(--orange)}.num-green{color:var(--green)}.num-blue{color:var(--cyan)}
+.score-card{display:flex;align-items:center;gap:20px;padding:18px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);margin-bottom:18px}
+.score-ring{width:72px;height:72px;flex-shrink:0;position:relative}
+.score-ring svg{transform:rotate(-90deg)}
+.score-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;font-family:var(--mono)}
+.score-info h3{font-size:16px;font-weight:700;margin-bottom:4px}
+.score-info p{font-size:13px;color:var(--text2);line-height:1.6}
+.finding2{border-left:3px solid var(--border2);padding:10px 14px;margin-bottom:10px;background:var(--bg2);border-radius:0 var(--radius) var(--radius) 0}
+.finding2.f-crit{border-color:var(--red)}
+.finding2.f-high{border-color:var(--orange)}
+.finding2.f-med{border-color:var(--yellow)}
+.finding2.f-ok{border-color:var(--green)}
+.f-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:5px}
+.f-name{font-size:13px;font-weight:700}
+.f-badge{font-size:10px;padding:2px 8px;border-radius:20px;font-family:var(--mono);font-weight:600}
+.fb-zap{background:rgba(30,144,255,.2);color:#7eb8ff}
+.fb-burp{background:rgba(255,159,67,.2);color:var(--orange)}
+.fb-nikto{background:rgba(46,213,115,.2);color:var(--green)}
+.fb-nmap{background:rgba(255,159,67,.15);color:#ffb366}
+.fb-ai{background:rgba(255,71,87,.2);color:var(--red2)}
+.f-detail{font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:5px}
+.f-proof{font-size:11px;font-family:var(--mono);background:var(--bg3);padding:5px 9px;border-radius:4px;color:var(--text3);word-break:break-all;margin-bottom:5px}
+.f-fix{font-size:12px;color:var(--cyan);line-height:1.5}
+.cvss-badge{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--bg4);color:var(--text2);font-family:var(--mono)}
+.ann-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.annotation-badge{font-size:10px;padding:2px 8px;border-radius:20px;font-family:var(--mono);font-weight:600}
+.ann-none{background:var(--bg4);color:var(--text3)}
+.ann-faux{background:rgba(90,96,117,.2);color:var(--text3)}
+.ann-confirm{background:rgba(46,213,115,.18);color:var(--green)}
+.ann-correction{background:rgba(255,211,42,.18);color:var(--yellow)}
+.ann-corrige{background:rgba(255,71,87,.18);color:var(--red2)}
+.mini-input,.mini-select,.mini-textarea{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:11px;outline:none}
+.mini-input,.mini-select{padding:6px 8px}
+.mini-textarea{width:100%;min-height:42px;resize:vertical;padding:7px 8px;line-height:1.4}
+.finding-comments{font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px}
+.batch-box{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:18px}
+.batch-box textarea{grid-column:1/-1}
+.diff-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.diff-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
+.diff-num{font-size:22px;font-weight:700;font-family:var(--mono)}
+.diff-new{color:var(--cyan)}.diff-fixed{color:var(--green)}.diff-changed{color:var(--yellow)}.diff-unchanged{color:var(--text3)}
+.act-row2{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.btn-act{padding:8px 16px;font-size:12px;font-weight:600;border:1px solid var(--border2);border-radius:var(--radius);background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);transition:all .15s}
+.btn-act:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn-export{padding:8px 14px;font-size:12px;font-weight:600;border:1px solid var(--border2);border-radius:var(--radius);background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);transition:all .15s;text-decoration:none;display:inline-block}
+.btn-export:hover{border-color:var(--green);color:var(--green)}
+.sec-h{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:12px;margin-top:20px}
+.hint2{font-size:12px;color:var(--text3);margin-bottom:12px;font-family:var(--mono)}
+.server-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.stag{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg4);color:var(--text2);font-family:var(--mono)}
+.config-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)}
+.config-row:last-child{border-bottom:none}
+.config-label{font-size:12px;color:var(--text2)}
+.config-value{font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)}
+.status-ok{color:var(--green)!important}.status-warn{color:var(--yellow)!important}.status-bad{color:var(--red)!important}
+.empty{text-align:center;padding:48px 24px;color:var(--text3)}
+.empty-icon{font-size:40px;margin-bottom:12px;opacity:.4;display:flex;align-items:center;justify-content:center}
+.empty-icon i{font-size:42px}
+.empty h3{font-size:15px;font-weight:700;margin-bottom:6px;color:var(--text2)}
+.empty p{font-size:13px;line-height:1.7}
+.history-table{width:100%;border-collapse:collapse;margin-top:12px}
+.history-table thead{background:var(--bg3);border-bottom:1px solid var(--border2)}
+.history-table th{text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.history-table td{padding:12px;border-bottom:1px solid var(--border);color:var(--text);font-size:13px}
+.history-table tbody tr:hover{background:var(--bg3)}
+.history-table .time-col{font-family:var(--mono);color:var(--text2);font-size:12px}
+.history-table .risk-c{color:var(--red)}
+.history-table .risk-h{color:var(--orange)}
+.history-table .risk-m{color:var(--yellow)}
+.history-table .risk-l{color:var(--green)}
+.history-table .score-col{font-weight:600;font-family:var(--mono);font-size:12px}
+.dashboard-list{display:flex;flex-direction:column;gap:8px;min-width:0;overflow:hidden}
+.dashboard-card{min-width:0;overflow:hidden}
+.dashboard-list-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);min-width:0;overflow:hidden;max-width:100%}
+.dashboard-list-main{min-width:0;flex:1}
+.dashboard-list-title{font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-list-meta{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-list-value{font-size:12px;font-weight:800;font-family:var(--mono);color:var(--cyan);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+.activity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--cyan);box-shadow:0 0 0 4px var(--cyanbg)}
+.btn-action{padding:4px 8px;margin:0 2px;font-size:11px;border:1px solid;border-radius:4px;cursor:pointer;transition:all .15s;font-weight:600;font-family:var(--mono)}
+.btn-action i{font-size:13px}
+.btn-detail{border-color:var(--cyan);color:var(--cyan);background:transparent}
+.btn-detail:hover{background:rgba(30,144,255,.1)}
+.btn-delete{border-color:var(--red);color:var(--red);background:transparent}
+.btn-delete:hover{background:rgba(255,71,87,.1)}
+.history-controls{display:flex;gap:12px;margin-bottom:20px;align-items:center;justify-content:space-between}
+.filter-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.filter-field label{display:block;font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase}
+.filter-field input,.filter-field select{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none}
+.history-search{flex:1;max-width:400px;display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0 12px}
+.history-search input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;padding:8px 0}
+.history-search input::placeholder{color:var(--text3)}
+.page-btn{padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);color:var(--text);cursor:pointer;transition:all .15s}
+.page-btn:hover:not(:disabled){border-color:var(--border2);background:var(--bg3)}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.page-btn.active{background:var(--red);border-color:var(--red);color:#fff}
+.empty-history{text-align:center;padding:48px 24px;color:var(--text3)}
+.empty-history .empty-icon{font-size:48px;margin-bottom:12px}
+.chart-wrapper{position:relative;width:100%;height:220px;overflow:hidden}
+.chart-wrapper canvas{width:100% !important;height:220px !important;max-height:220px}
+.sidebar-user-panel{padding:14px 18px 0px 18px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.user-badge{display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius)}
+.user-avatar{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.user-avatar.admin{background:var(--redbg);color:var(--red2)}
+.user-avatar.auditor{background:var(--cyanbg);color:var(--cyan)}
+.user-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.user-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:9px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;padding:1px 5px;border-radius:4px;width:fit-content}
+.user-role.admin{background:rgba(255,71,87,0.15);color:var(--red2)}
+.user-role.auditor{background:rgba(30,144,255,0.15);color:var(--cyan)}
+.btn-logout{display:flex;align-items:center;gap:10px;padding:9px 12px;color:var(--text2);font-size:13px;font-weight:600;text-decoration:none;border-radius:var(--radius);transition:background .15s,color .15s}
+.btn-logout:hover{background:rgba(255,71,87,0.08);color:var(--red2)}
+@media(max-width:900px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:99;transition:transform .3s}
+  .sidebar.collapsed-mobile{transform:translateX(-100%)}
+  .sidebar-toggle{display:flex}
+  .stat-grid{grid-template-columns:1fr 1fr}
+  .grid2{grid-template-columns:1fr}
+  .header h1{font-size:15px}
+  .content{padding:16px}
+}
+@media(max-width:600px){
+  .stat-grid,.grid2{grid-template-columns:1fr}
+  .history-controls{flex-direction:column}
+  .history-search{max-width:100%}
+  .filter-grid{grid-template-columns:1fr 1fr}
+  .header h1{font-size:13px}
+  .url-bar{flex-wrap:wrap}
+  .url-bar input{min-width:100%}
+  .content{padding:12px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon"><i class="bi bi-shield-lock"></i></div>
+      <div><div class="logo-text">OWASP Scanner</div><div class="logo-sub">v2.1 — OWASP 2025</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Scanner</div>
+<div class="nav-item active" onclick="showPanel('scan')"><i class="bi bi-activity nav-icon"></i> Nouvelle analyse</div>
+      <div class="nav-item" onclick="showPanel('projects')"><i class="bi bi-folder2-open nav-icon"></i> Projets</div>
+      <div class="nav-item" onclick="showPanel('config')"><i class="bi bi-gear nav-icon"></i> Configuration</div>
+      <div class="nav-item" onclick="showPanel('dashboard')"><i class="bi bi-speedometer2 nav-icon"></i> Dashboard</div>
+      <div class="nav-item" onclick="showPanel('results')"><i class="bi bi-file-earmark-bar-graph nav-icon"></i> Rapport actuel</div>
+      <div class="nav-item" onclick="showPanel('history')"><i class="bi bi-clock-history nav-icon"></i> Historique</div>
+      <div class="nav-item" onclick="showPanel('admin')"><i class="bi bi-people nav-icon"></i> Gestion Utilisateurs</div>
+    </nav>
+    <div class="sidebar-user-panel">
+      <div class="user-badge">
+        {% if session.get('role') == 'admin' %}<div class="user-avatar admin"><i class="bi bi-shield-check"></i></div>{% else %}<div class="user-avatar auditor"><i class="bi bi-person"></i></div>{% endif %}
+        <div class="user-meta">
+          <div class="user-name">{{ session.get('username', 'Utilisateur') }}</div>
+          {% if session.get('role') == 'admin' %}<span class="user-role admin">Admin</span>{% else %}<span class="user-role auditor">Auditeur</span>{% endif %}
+        </div>
+      </div>
+      <a href="{{ url_for('logout') }}" class="btn-logout"><i class="bi bi-box-arrow-right" style="font-size:14px;"></i> Déconnexion</a>
+    </div>
+    <div class="sidebar-footer">Pour usage éducatif / légal<br>uniquement. PPE 2025-2026 <i class="bi bi-shield-check"></i></div>
+  </div>
+
+  <div class="main">
+      <div class="header">
+      <div class="header-left">
+        <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display:flex">☰</button>
+        <h1>Moteur de détection de vulnérabilités</h1>
+      </div>
+      <div class="header-meta" id="header-status">En attente d'une cible</div>
+      <select id="theme-select" class="mini-select" onchange="setTheme(this.value)" style="min-width:120px"><option value="dark">Dark</option><option value="light">Light</option></select>
+      <select id="lang-select" class="mini-select" onchange="setLang(this.value)" style="min-width:90px"><option value="fr">FR</option><option value="en">EN</option></select>
+    </div>
+    <div class="content">
+
+      <!-- Scan -->
+      <div class="panel active" id="panel-scan">
+        <div class="url-bar" style="margin-bottom:12px">
+          <select id="project-select" class="mini-select" style="flex:1;min-width:220px"><option value="">Sans projet</option></select>
+          <button class="btn-scan" onclick="showPanel('projects')" style="padding:8px 14px;font-size:12px"><i class="bi bi-folder2-open"></i> Projets</button>
+        </div>
+        <div class="url-bar">
+          <input type="text" id="target" placeholder="https://cible.exemple.com" value="https://testphp.vulnweb.com"/>
+          <button class="btn-scan" id="scan-btn" onclick="startScan()"><i class="bi bi-play-fill"></i> Lancer le scan</button>
+        </div>
+        <div class="batch-box">
+          <textarea id="batch-targets" class="mini-textarea" placeholder="Scan multi-cibles : une URL par ligne&#10;https://testphp.vulnweb.com&#10;https://demo.testfire.net"></textarea>
+          <button class="btn-scan" id="batch-btn" onclick="startBatchScan()" style="align-self:end"><i class="bi bi-diagram-3"></i> Scanner plusieurs cibles</button>
+        </div>
+        <div id="batch-status" class="hint2"></div>
+        <div class="sec-h">OWASP Top 10 <span style="color:var(--red2);font-size:11px;">2025</span></div>
+        <p class="hint2">Cliquez pour activer/désactiver un vecteur</p>
+        <div class="owasp-grid" id="owasp-grid"></div>
+        <div class="sec-h">Outils actifs</div>
+        <div class="tool-grid" id="tool-grid"></div>
+        <div class="progress-wrap" id="prog-wrap" style="display:none">
+          <div class="progress-header"><span class="progress-lbl" id="prog-lbl">Initialisation…</span><span class="progress-pct" id="prog-pct">0%</span></div>
+          <div class="progress-track"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+          <div class="phases" id="phases"></div>
+        </div>
+      </div>
+
+      <!-- Dashboard FIX: chart-wrapper pour éviter boucle resize -->
+      <div class="panel" id="panel-dashboard">
+        <div class="header" style="padding:0 0 18px 0"><h2><i class="bi bi-speedometer2"></i> Tableau de bord</h2></div>
+        <div class="stat-grid" id="dash-kpis">
+          <div class="stat-c"><div class="stat-num2 num-blue" id="dash-total-scans">-</div><div class="stat-lbl2">Scans totaux</div></div>
+          <div class="stat-c"><div class="stat-num2 num-red" id="dash-total-findings">-</div><div class="stat-lbl2">Vulnérabilités</div></div>
+          <div class="stat-c"><div class="stat-num2 num-green" id="dash-avg-score">-</div><div class="stat-lbl2">Score moyen</div></div>
+          <div class="stat-c"><div class="stat-num2 num-orange" id="dash-risk-crit">-</div><div class="stat-lbl2">Risque critique</div></div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Évolution du score</div>
+            <div class="chart-wrapper"><canvas id="scoreChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Findings par OWASP ID</div>
+            <div class="chart-wrapper"><canvas id="owaspChart"></canvas></div>
+          </div>
+        </div>
+        <div class="grid2" style="margin-top:12px">
+          <div class="card" style="grid-column:1/-1"><div class="sec-h" style="margin-top:0">Top 5 cibles</div><div id="dash-top-targets" style="font-size:13px;color:var(--text2)">...</div></div>
+        </div>
+        {% if session.get('role') == 'admin' %}
+        <div class="card" style="margin-top:20px">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-clock-history"></i> Scans programmés</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:16px;padding:12px;background:var(--bg3);border-radius:var(--radius)">
+            <div style="flex:1;min-width:200px">
+              <label style="font-size:11px;color:var(--text3);font-weight:600;display:block;margin-bottom:4px;">Cible</label>
+              <input type="text" id="sched-target" placeholder="https://cible.exemple.com" style="width:100%;background:var(--bg4);border:1px solid var(--border);padding:8px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text3);font-weight:600;display:block;margin-bottom:4px;">Intervalle</label>
+              <select id="sched-interval" style="background:var(--bg4);border:1px solid var(--border);padding:8px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;">
+                <option value="30">30 min</option><option value="60" selected>1h</option><option value="180">3h</option><option value="360">6h</option><option value="720">12h</option><option value="1440">24h</option>
+              </select>
+            </div>
+            <button class="btn-scan" onclick="createScheduledScan()" style="padding:8px 16px;font-size:12px"><i class="bi bi-plus-lg"></i> Planifier</button>
+          </div>
+          <div id="scheduled-tasks-list"><div class="empty-history"><div class="empty-icon"><i class="bi bi-clock-history"></i></div><h3>Aucun scan programmé</h3></div></div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!--              ONGLET CONFIGURATION AMÉLIORÉ                 -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <div class="panel" id="panel-config">
+        <div class="header" style="padding:0 0 18px 0"><h2><i class="bi bi-gear-wide-connected"></i> Configuration du système</h2></div>
+
+        <!-- Section 1: Mode de fonctionnement -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-toggle-on"></i> Mode de fonctionnement</div>
+          <div id="config-mode" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+
+        <!-- Section 2: Informations système -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-laptop"></i> Informations système</div>
+          <div id="config-system" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+
+        <!-- Section 3: Configuration des outils (Tableau) -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-tools"></i> Configuration des outils</div>
+          <div id="config-tools" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+
+        <!-- Section 4: Services externes -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-cloud"></i> Services externes</div>
+          <div id="config-services" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+
+        <!-- Section 5: Sécurité -->
+        <div class="card" style="margin-bottom:14px;border-left:3px solid var(--green)">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-shield-check"></i> Recommandations sécurité</div>
+          <div id="config-security" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+
+        <!-- Section 6: Variables sensibles -->
+        <div class="card" style="border-left:3px solid var(--yellow)">
+          <div class="sec-h" style="margin-top:0"><i class="bi bi-key"></i> Variables d'environnement</div>
+          <div id="config-env" class="hint2" style="margin-bottom:0">
+            <div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-arrow-clockwise"></i></div><p>Chargement...</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-projects">
+        <div class="grid2">
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Créer un projet</div>
+            <form id="project-form" onsubmit="createProject(event)" style="display:flex;flex-direction:column;gap:12px">
+              <input name="name" class="mini-input" placeholder="Nom du projet" required style="width:100%">
+              <input name="client" class="mini-input" placeholder="Client / organisation" style="width:100%">
+              <select name="environment" class="mini-select" style="width:100%"><option value="dev">Dev</option><option value="staging">Staging</option><option value="prod" selected>Prod</option><option value="lab">Lab</option></select>
+              <input name="start_date" class="mini-input" type="date" style="width:100%">
+              <input name="end_date" class="mini-input" type="date" style="width:100%">
+              <textarea name="description" class="mini-textarea" placeholder="Description du périmètre"></textarea>
+              <button class="btn-scan" type="submit">Créer le projet</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Dashboard projet</div>
+            <select id="project-dashboard-select" class="mini-select" onchange="loadProjectDashboard(this.value)" style="width:100%;margin-bottom:12px"><option value="">Global</option></select>
+            <div id="project-dashboard"><div class="empty-history"><div class="empty-icon"><i class="bi bi-folder2-open"></i></div><h3>Aucun projet sélectionné</h3></div></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:18px">
+          <div class="sec-h" style="margin-top:0">Projets existants</div>
+          <div id="projects-list"><div class="empty-history"><div class="empty-icon"><i class="bi bi-folder2-open"></i></div><h3>Aucun projet</h3></div></div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-results">
+        <div class="card" style="margin-bottom:18px">
+          <div class="sec-h" style="margin-top:0">Comparer deux scans</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+            <div style="flex:1;min-width:220px"><label class="hint2" style="display:block;margin-bottom:4px">Ancien scan</label><select id="diff-left" class="mini-select" style="width:100%"></select></div>
+            <div style="flex:1;min-width:220px"><label class="hint2" style="display:block;margin-bottom:4px">Nouveau scan</label><select id="diff-right" class="mini-select" style="width:100%"></select></div>
+            <button class="btn-scan" onclick="compareScans()" style="padding:8px 16px;font-size:12px">Comparer</button>
+          </div>
+        </div>
+        <div id="diff-content"></div>
+        <div id="results-content"><div class="empty"><div class="empty-icon"><i class="bi bi-inbox"></i></div><h3>Aucun rapport disponible</h3></div></div>
+      </div>
+
+      <div class="panel" id="panel-history">
+        <div class="history-controls">
+          <div class="history-search"><input type="text" id="history-search" data-i18n-placeholder="search" placeholder="Chercher…" onkeyup="filterScans()"/></div>
+          <button class="btn-scan" onclick="applyHistoryFilters()"><i class="bi bi-search"></i> Filtrer</button>
+          <button class="btn-scan" onclick="clearHistoryFilters()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+        </div>
+        <div class="filter-grid">
+          <div class="filter-field"><label data-i18n="dateFrom">Date début</label><input type="date" id="filter-date-from"></div>
+          <div class="filter-field"><label data-i18n="dateTo">Date fin</label><input type="date" id="filter-date-to"></div>
+          <div class="filter-field"><label data-i18n="tool">Outil</label><select id="filter-tool"><option value="">Tous</option><option value="nmap">Nmap</option><option value="zap">ZAP</option><option value="nikto">Nikto</option><option value="burp">Burp</option><option value="ai">IA</option></select></div>
+          <div class="filter-field"><label data-i18n="scoreMin">Score min</label><input type="number" id="filter-score-min" min="0" max="100" placeholder="0"></div>
+          <div class="filter-field"><label data-i18n="scoreMax">Score max</label><input type="number" id="filter-score-max" min="0" max="100" placeholder="100"></div>
+        </div>
+        <div class="card" style="margin-bottom:18px">
+          <div class="sec-h" style="margin-top:0">Diff rapide</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+            <select id="history-diff-left" class="mini-select" style="flex:1;min-width:180px"></select>
+            <select id="history-diff-right" class="mini-select" style="flex:1;min-width:180px"></select>
+            <button class="btn-scan" onclick="compareScans()" style="padding:8px 16px;font-size:12px">Comparer</button>
+          </div>
+        </div>
+        <div id="diff-content-history"></div>
+        <div id="history-content"><div class="empty-history"><div class="empty-icon"><i class="bi bi-clock-history"></i></div><h3>Aucun historique</h3></div></div>
+        <div class="card" style="margin-top:24px">
+          <div class="sec-h" style="margin-top:0">Activité récente</div>
+          <div id="history-recent-activity" style="font-size:12px;color:var(--text2)">...</div>
+        </div>
+        {% if session.get('role') == 'admin' %}
+        <div style="margin-top:30px;border-top:1px solid var(--border);padding-top:20px">
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">🔐 Piste d'audit</div>
+            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+              <select id="audit-action-filter" style="background:var(--bg3);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12px;outline:none"><option value="">Toutes</option></select>
+              <input type="text" id="audit-user-filter" placeholder="Utilisateur…" style="background:var(--bg3);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;flex:1;max-width:250px">
+              <button class="btn-scan" onclick="loadAuditLogs()" style="padding:8px 16px;font-size:12px"><i class="bi bi-search"></i> Charger</button>
+            </div>
+            <div id="audit-logs-content"><div class="empty-history"><div class="empty-icon"><i class="bi bi-journal-text"></i></div><h3>Logs d'audit</h3></div></div>
+          </div>
+          <div class="card" style="margin-top:15px;border-color:rgba(255,71,87,0.3)">
+            <div class="sec-h" style="margin-top:0;color:var(--red)">⚖️ RGPD</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select id="gdpr-user-select" style="background:var(--bg3);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;flex:1;max-width:300px"><option value="">-- Utilisateur --</option></select>
+              <button class="btn-scan" onclick="gdprForget()" style="background:var(--red);padding:8px 20px;font-size:12px"><i class="bi bi-trash"></i> Effacer</button>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="panel" id="panel-admin">
+        <div class="header" style="padding:0 0 18px 0"><h2>Gestion de l'équipe d'audit</h2></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Ajouter un collaborateur</div>
+            <form id="add-user-form" onsubmit="createUser(event)" style="display:flex;flex-direction:column;gap:14px;margin-top:10px">
+              <input type="text" name="username" placeholder="Nom d'utilisateur" required style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none">
+              <input type="password" name="password" placeholder="Mot de passe" required style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none">
+              <select name="role" style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:var(--radius);color:var(--text);font-family:var(--mono);outline:none">
+                <option value="auditor"><i class="bi bi-person"></i> Auditeur</option><option value="admin"><i class="bi bi-shield-check"></i> Admin</option>
+              </select>
+              <button type="submit" class="btn-scan"><i class="bi bi-person-plus"></i> Générer l'accès</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="sec-h" style="margin-top:0">Utilisateurs enregistrés</div>
+            <table class="history-table"><thead><tr><th>Utilisateur</th><th>Rôle</th><th>Actions</th></tr></thead><tbody id="user-table-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const OWASP = [
+  {id:"A01",name:"Broken Access Control",desc:"IDOR · CORS · Privesc · SSRF",sev:"c"},
+  {id:"A02",name:"Security Misconfiguration",desc:"Headers · Configs par défaut",sev:"h"},
+  {id:"A03",name:"Supply Chain Failures",desc:"Dépendances malveillantes",sev:"h"},
+  {id:"A04",name:"Cryptographic Failures",desc:"TLS faible · Secrets exposés",sev:"c"},
+  {id:"A05",name:"Injection",desc:"SQLi · XSS · OS cmd",sev:"c"},
+  {id:"A06",name:"Insecure Design",desc:"Threat modeling · Rate limiting",sev:"h"},
+  {id:"A07",name:"Auth Failures",desc:"Sessions · Brute force · MFA",sev:"c"},
+  {id:"A08",name:"Integrity Failures",desc:"Sérialisation · CI/CD",sev:"h"},
+  {id:"A09",name:"Logging & Alerting",desc:"Logs · Alertes SIEM",sev:"m"},
+  {id:"A10",name:"Exceptional Conditions",desc:"Gestion erreurs · Race cond.",sev:"m"}
+];
+const TOOLS = [
+  {id:"nmap",name:"Nmap",icon:"bi bi-hdd-network",desc:"Ports ouverts",tags:["Ports","Réseau"]},
+  {id:"zap",name:"OWASP ZAP",icon:"bi bi-lightning-charge",desc:"Headers, cookies",tags:["Passif","Actif"]},
+  {id:"nikto",name:"Nikto",icon:"bi bi-search",desc:"Fichiers sensibles",tags:["CVE","Fichiers"]},
+  {id:"burp",name:"Burp Suite",icon:"bi bi-bug",desc:"Injections",tags:["XSS","SQLi"]},
+  {id:"ai",name:"Analyse IA",icon:"bi bi-cpu",desc:"Corrélation Claude",tags:["IA","Rapport"]}
+];
+
+let selO = new Set(OWASP.map(o=>o.id)), selT = new Set(TOOLS.map(t=>t.id));
+let currentScanId = null, evtSource = null, scanTimeout = null;
+let scoreChartInstance = null, owaspChartInstance = null;
+let allScans = [], filteredScans = [], currentPage = 1;
+let allProjects = [], selectedProjectId = '';
+let currentLang = localStorage.getItem('owasp_lang') || 'fr';
+let currentTheme = localStorage.getItem('owasp_theme') || 'dark';
+const SCANS_PER_PAGE = 10;
+const I18N = {
+  fr:{title:'Moteur de détection de vulnérabilités',status:'En attente d\'une cible',dateFrom:'Date début',dateTo:'Date fin',tool:'Outil',scoreMin:'Score min',scoreMax:'Score max',search:'Chercher…'},
+  en:{title:'Vulnerability detection engine',status:'Waiting for a target',dateFrom:'Start date',dateTo:'End date',tool:'Tool',scoreMin:'Min score',scoreMax:'Max score',search:'Search…'}
+};
+function setTheme(theme){currentTheme=theme;document.body.classList.toggle('light',theme==='light');localStorage.setItem('owasp_theme',theme);const t=document.getElementById('theme-select');if(t)t.value=theme}
+function setLang(lang){currentLang=lang;localStorage.setItem('owasp_lang',lang);document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.getAttribute('data-i18n');if(I18N[lang]?.[k])el.textContent=I18N[lang][k]});document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{const k=el.getAttribute('data-i18n-placeholder');if(I18N[lang]?.[k])el.placeholder=I18N[lang][k]});document.getElementById('header-status').textContent=I18N[lang].status;document.querySelector('.header h1').textContent=I18N[lang].title;const l=document.getElementById('lang-select');if(l)l.value=lang}
+
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const p = document.getElementById('panel-'+name);
+  if(p) p.classList.add('active');
+  if(typeof event!=='undefined' && event.currentTarget) event.currentTarget.classList.add('active');
+  if(name==='admin'){loadUsers();loadAuditActions();loadGdprUsers();}
+  if(name==='dashboard'){loadDashboard();loadScheduledScans();}
+  if(name==='config'){loadConfig();}
+  if(name==='projects'){loadProjects();}
+  if(name==='scan'){loadProjectSelects();}
+  if(name==='history'){loadRecentActivity();}
+}
+
+// ── Render ──
+function renderOwasp(){
+  const s={c:'Critique',h:'Élevé',m:'Moyen'};
+  document.getElementById('owasp-grid').innerHTML=OWASP.map(o=>`<div class="card-sm ${selO.has(o.id)?'on':''}" onclick="togO('${o.id}')"><div class="ow-id">OWASP ${o.id}</div><div class="ow-name">${o.name}</div><div class="ow-desc">${o.desc}</div><div class="ow-foot"><span class="sev-badge sev-${o.sev}">${s[o.sev]}</span><div class="chk-mark">${selO.has(o.id)?'✓':''}</div></div></div>`).join('');
+}
+function renderTools(){
+  document.getElementById('tool-grid').innerHTML=TOOLS.map(t=>`<div class="card-sm on-blue ${selT.has(t.id)?'on-blue':''}" style="${selT.has(t.id)?'border-color:var(--blue);background:var(--bluebg)':''}" onclick="togT('${t.id}')"><div class="tool-icon2"><i class="${t.icon}"></i></div><div class="tool-name2">${t.name}</div><div class="tool-desc2">${t.desc}</div><div class="tool-tags2">${t.tags.map(tg=>`<span class="tag2">${tg}</span>`).join('')}</div></div>`).join('');
+}
+function togO(id){selO.has(id)?selO.delete(id):selO.add(id);renderOwasp();}
+function togT(id){selT.has(id)?selT.delete(id):selT.add(id);renderTools();}
+
+// ── Scan ──
+async function startScan(){
+  const t=document.getElementById('target').value.trim();
+  if(!t||!selO.size||!selT.size) return;
+    if(evtSource) evtSource.close();
+    if(scanTimeout) clearTimeout(scanTimeout);
+    document.getElementById('scan-btn').disabled=true; document.getElementById('scan-btn').innerHTML='<i class="bi bi-hourglass-split"></i> Scan…';
+  document.getElementById('prog-wrap').style.display='block'; document.getElementById('header-status').textContent=`Scan de ${t}…`;
+  const p=['Résolution DNS','Nmap','ZAP','Nikto','Burp','IA','Rapport'];
+  setPhases(p,-1); setProgress(2,'Initialisation…');
+  try{
+    const r=await fetch('/api/scan/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:t,tools:[...selT],owasp_ids:[...selO],project_id:document.getElementById('project-select').value})});
+    const d=await r.json();
+    if(d.error){alert(d.error);resetBtn();return;}
+    currentScanId=d.scan_id;
+    scanTimeout=setTimeout(()=>recoverStuckScan(d.scan_id),300000);
+    evtSource=new EventSource(`/api/scan/stream/${d.scan_id}`);
+    evtSource.onmessage=e=>{const evt=JSON.parse(e.data);if(evt.type==='phase'){setProgress(evt.pct,evt.message)}else if(evt.type==='done'){setProgress(100,'Terminé !');evtSource.close();setTimeout(()=>{document.getElementById('prog-wrap').style.display='none';renderResults(evt.results);showPanel('results');document.getElementById('header-status').textContent='Rapport prêt'},800);resetBtn()}else if(evt.type==='error'){alert(evt.message);evtSource.close();resetBtn()}};
+    evtSource.onerror=()=>{evtSource.close();resetBtn()};
+  }catch(e){alert('Erreur réseau');resetBtn()}
+}
+function setProgress(pct,lbl){document.getElementById('prog-fill').style.width=pct+'%';document.getElementById('prog-pct').textContent=pct+'%';document.getElementById('prog-lbl').textContent=lbl;}
+function setPhases(ph,idx){document.getElementById('phases').innerHTML=ph.map((p,i)=>`<div class="phase-row2"><div class="ph-dot ${i<idx?'ph-done':i===idx?'ph-run':'ph-wait'}"></div><span class="ph-txt">${p}</span></div>`).join('');}
+function resetBtn(){if(scanTimeout)clearTimeout(scanTimeout);document.getElementById('scan-btn').disabled=false;document.getElementById('scan-btn').innerHTML='<i class="bi bi-play-fill"></i> Lancer le scan';}
+async function recoverStuckScan(id){try{const r=await fetch(`/api/scan/status/${id}`);if(!r.ok)return;const s=await r.json();const last=s.events?.slice(-1)[0]||{};if(last.pct===96||s.status==='running'){document.getElementById('batch-status').textContent=`Scan bloqué à 96% depuis trop longtemps. Statut backend : ${s.status}. Attente ou relance recommandée.`;alert(`Le scan est bloqué à 96% côté interface. Le backend indique : ${s.status}. Relance ou attends la fin des écritures DB.`)}else if(s.status==='done' && s.results_ready){const d=await fetch(`/api/scan/result/${id}`);const j=await d.json();renderResults(j);showPanel('results')}}catch(e){console.error(e)}}
+async function annotateFinding(id){const status=document.getElementById(`ann-status-${id}`).value;const comment=document.getElementById(`ann-comment-${id}`).value.trim();if(!comment){alert('Ajoutez un commentaire.');return}const r=await fetch(`/api/findings/${id}/annotate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,comment})});const j=await r.json();if(r.ok){alert(j.message);document.getElementById(`ann-comment-${id}`).value='';loadFindingComments(id)}else alert(j.error)}
+async function loadFindingComments(id){const r=await fetch(`/api/findings/${id}/comments`);const j=await r.json();const c=document.getElementById(`comments-${id}`);if(!r.ok){c.textContent=j.error||'Erreur';return}const comments=j.comments||[];c.innerHTML=comments.length?comments.map(x=>`<div><b>${x.created_by}</b> — ${x.created_at}<br>${x.comment}</div>`).join('<hr style="border-color:var(--border);margin:6px 0">'):'Aucun commentaire.'}
+async function startBatchScan(){const raw=document.getElementById('batch-targets').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(raw.length<2){alert('Entrez au moins deux cibles, une par ligne.');return}document.getElementById('batch-btn').disabled=true;document.getElementById('batch-status').textContent='Lancement des scans multi-cibles…';const r=await fetch('/api/batch-scans/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:raw,tools:[...selT],owasp_ids:[...selO],project_id:document.getElementById('project-select').value})});const d=await r.json();if(r.ok){document.getElementById('batch-status').textContent=`Lot lancé : ${d.scan_ids.length} scan(s) en parallèle.`;currentScanId=d.scan_ids[0];loadScanHistory()}else{document.getElementById('batch-status').textContent=d.error||'Erreur';alert(d.error)}document.getElementById('batch-btn').disabled=false}
+async function compareScans(){const active=document.querySelector('.panel.active')?.id;let left,right;if(active==='panel-history'){left=document.getElementById('history-diff-left').value;right=document.getElementById('history-diff-right').value}else{left=document.getElementById('diff-left').value;right=document.getElementById('diff-right').value}if(!left||!right||left===right){alert('Sélectionnez deux scans différents.');return}const r=await fetch('/api/scans/diff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({left_scan_id:left,right_scan_id:right})});const d=await r.json();if(r.ok){renderDiff(d)}else{alert(d.error)}}
+function renderDiff(d){const s=d.summary||{};const html=`<div class="diff-summary"><div class="diff-box"><div class="diff-num diff-new">${s.new_count||0}</div><div>Nouvelles</div></div><div class="diff-box"><div class="diff-num diff-fixed">${s.fixed_count||0}</div><div>Corrigées</div></div><div class="diff-box"><div class="diff-num diff-changed">${s.changed_count||0}</div><div>Modifiées</div></div><div class="diff-box"><div class="diff-num diff-unchanged">${s.unchanged_count||0}</div><div>Stables</div></div></div><div class="grid2"><div class="card"><div class="sec-h" style="margin-top:0">Nouvelles vulnérabilités</div>${(d.new||[]).map(f=>`<div class="finding-comments"><b>${f.owasp_id}</b> — ${f.nom}<br><span style="color:var(--cyan)">CVSS ${Number(f.cvss||0).toFixed(1)} · ${f.outil}</span></div>`).join('')||'<div class="hint2">Aucune nouvelle vulnérabilité.</div>'}</div><div class="card"><div class="sec-h" style="margin-top:0">Corrigées</div>${(d.fixed||[]).map(f=>`<div class="finding-comments"><b>${f.owasp_id}</b> — ${f.nom}<br><span style="color:var(--green)">CVSS ${Number(f.cvss||0).toFixed(1)} · ${f.outil}</span></div>`).join('')||'<div class="hint2">Aucune vulnérabilité corrigée.</div>'}</div></div><div class="card" style="margin-top:12px"><div class="sec-h" style="margin-top:0">Modifiées</div>${(d.changed||[]).map(x=>`<div class="finding-comments"><b>${x.after.owasp_id}</b> — ${x.after.nom}<br>Avant : ${x.before.statut} / CVSS ${Number(x.before.cvss||0).toFixed(1)} → Après : ${x.after.statut} / CVSS ${Number(x.after.cvss||0).toFixed(1)}</div>`).join('')||'<div class="hint2">Aucune modification.</div>'}</div>`;
+  const active=document.querySelector('.panel.active')?.id;const target=active==='panel-history'?document.getElementById('diff-content-history'):document.getElementById('diff-content');if(target)target.innerHTML=html;showPanel('results')}
+
+function renderResults(r){
+  const st=r.stats||{},score=Math.round(r.score||0);
+  const rc={Critique:'var(--red)',Élevé:'var(--orange)',Moyen:'var(--yellow)',Faible:'var(--green)'}[r.risk_level]||'var(--text)';
+  const c=2*Math.PI*30,dash=c-(score/100)*c;
+  document.getElementById('results-content').innerHTML=`
+    <div class="score-card"><div class="score-ring"><svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--bg4)" stroke-width="5"/><circle cx="36" cy="36" r="30" fill="none" stroke="${rc}" stroke-width="5" stroke-dasharray="${c}" stroke-dashoffset="${dash}" stroke-linecap="round"/></svg><div class="score-text" style="color:${rc}">${score}</div></div><div class="score-info"><h3>Score: ${score}/100 — ${r.risk_level}</h3><p>${r.target}</p></div></div>
+    <div class="stat-grid">${['critique','élevé','moyen','ok'].map(k=>`<div class="stat-c"><div class="stat-num2 ${k==='critique'?'num-red':k==='élevé'?'num-orange':k==='moyen'?'num-blue':'num-green'}">${st[k]||0}</div><div class="stat-lbl2">${k.toUpperCase()}</div></div>`).join('')}</div>
+    <div class="sec-h">Findings</div><div class="hint2" style="margin-bottom:12px">Validation manuelle : utilise le menu de chaque finding pour le marquer comme confirmé, faux positif ou en correction.</div>${(r.findings||[]).map(f=>{
+      const ann=f.annotation_status||'none';
+      const annLabel={none:'Non annoté',faux_positif:'Faux positif',confirme:'Confirmé',en_correction:'En correction',corrige:'Corrigé'}[ann]||ann;
+      const annClass={none:'ann-none',faux_positif:'ann-faux',confirme:'ann-confirm',en_correction:'ann-correction',corrige:'ann-corrige'}[ann]||'ann-none';
+      return `<div class="finding2 f-${f.statut==='critique'?'crit':f.statut==='élevé'?'high':f.statut==='moyen'?'med':'ok'}"><div class="f-head"><span class="f-name">${f.owasp_id} — ${f.nom}</span><span class="f-badge fb-${(f.outil||'').toLowerCase().startsWith('nmap')?'nmap':(f.outil||'').toLowerCase().includes('zap')?'zap':(f.outil||'').toLowerCase().includes('nikto')?'nikto':(f.outil||'').toLowerCase().includes('burp')?'burp':'ai'}">${f.outil}</span><span class="cvss-badge">CVSS ${Number(f.cvss||0).toFixed(1)}</span><span class="annotation-badge ${annClass}">${annLabel}</span></div><div class="f-detail">${f.detail||''}</div>${f.preuve?`<div class="f-proof">${f.preuve}</div>`:''}${f.remediation?`<div class="f-fix">${f.remediation}</div>`:''}
+      ${f.id?`<div class="ann-row"><select id="ann-status-${f.id}" class="mini-select"><option value="none" ${ann==='none'?'selected':''}>Non annoté</option><option value="faux_positif" ${ann==='faux_positif'?'selected':''}>Faux positif</option><option value="confirme" ${ann==='confirme'?'selected':''}>Confirmé</option><option value="en_correction" ${ann==='en_correction'?'selected':''}>En correction</option><option value="corrige" ${ann==='corrige'?'selected':''}>Corrigé</option></select><input id="ann-comment-${f.id}" class="mini-input" placeholder="Commentaire..." style="flex:1;min-width:180px"><button class="btn-action btn-detail" onclick="annotateFinding(${f.id})">Annoter</button><button class="btn-action" onclick="loadFindingComments(${f.id})">Commentaires</button></div><div id="comments-${f.id}" class="finding-comments"></div>`:`<div class="hint2">Annotation disponible après sauvegarde en base.</div>`}</div>`;
+    }).join('')}
+    <div class="act-row2"><a class="btn-export" href="/api/report/${currentScanId}/markdown" download>⬇ MD</a><a class="btn-export" href="/api/report/${currentScanId}/json" download>⬇ JSON</a><a class="btn-export" href="/api/report/${currentScanId}/pdf" download>⬇ PDF</a></div>`;
+}
+
+renderOwasp(); renderTools();
+
+// ═══════════════════════════════════════════════════════════════
+//              CSS pour les toggles interactifs
+// ═══════════════════════════════════════════════════════════════
+const toggleStyle = document.createElement('style');
+toggleStyle.textContent = `
+.toggle-switch {
+  position: relative; width: 44px; height: 24px; flex-shrink: 0; cursor: pointer;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0; background: var(--bg4); border-radius: 24px;
+  transition: background .2s; border: 1px solid var(--border2);
+}
+.toggle-slider::before {
+  content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px;
+  background: var(--text3); border-radius: 50%; transition: transform .2s, background .2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px); background: #fff;
+}
+.toggle-switch.disabled { opacity: .5; cursor: not-allowed; }
+`;
+document.head.appendChild(toggleStyle);
+
+// ═══════════════════════════════════════════════════════════════
+//              FONCTION loadConfig() — ONGLET CONFIGURATION
+// ═══════════════════════════════════════════════════════════════
+async function loadConfig(){
+  try{
+    const r = await fetch('/api/config');
+    if(!r.ok) throw new Error('Erreur API config');
+    const c = await r.json();
+    const isAdmin = document.querySelector('.user-role.admin') !== null;
+    
+    // ── 1. Mode de fonctionnement AVEC TOGGLES ──────────────────
+    const realTools = c.real_tools || {};
+    const hasReal = Object.values(realTools).some(v => v === true);
+    const modeActuel = hasReal ? 'Réel (outils installés)' : 'Simulé (mode démo)';
+    const iaActive = c.anthropic_key_configured ? 'Activée' : 'Désactivée';
+    
+    document.getElementById('config-mode').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="config-row">
+          <span class="config-label">Mode actuel</span>
+          <span class="config-value ${hasReal ? 'status-ok' : 'status-warn'}">${modeActuel}</span>
+        </div>
+        <div><hr style="border-color:var(--border);margin:6px 0"></div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Basculer le mode de chaque outil (admin requis) :</div>
+        ${['nmap','zap','nikto','burp'].map(k => `
+          <div class="config-row">
+            <span class="config-label" style="font-weight:600">${k.toUpperCase()}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11px;color:var(--text3)">Simulé</span>
+              <label class="toggle-switch ${!isAdmin ? 'disabled' : ''}">
+                <input type="checkbox" ${realTools[k] ? 'checked' : ''} ${!isAdmin ? 'disabled' : ''}
+                  onchange="toggleTool('${k}_real', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+              <span style="font-size:11px;color:var(--text3)">Réel</span>
+            </div>
+          </div>
+        `).join('')}
+        <div class="config-row" style="border-bottom:none">
+          <span class="config-label" style="font-weight:600">IA (API Anthropic)</span>
+          <span class="config-value ${c.anthropic_key_configured ? 'status-ok' : 'status-warn'}" style="font-size:12px">${iaActive}</span>
+        </div>
+      </div>`;
+
+    // ── 2. Informations système (inchangé) ──────────────────────
+    document.getElementById('config-system').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="config-row">
+          <span class="config-label">Version de l'application</span>
+          <span class="config-value">${c.app_version || '2.1'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Version Python</span>
+          <span class="config-value">${c.python_version || '-'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Base de données</span>
+          <span class="config-value ${c.database_exists ? 'status-ok' : 'status-bad'}">SQLite${c.database_exists ? ' ✓ Connectée' : ' ✗ Introuvable'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Chemin SQLite</span>
+          <span class="config-value" style="font-size:11px;word-break:break-all">${c.database_path || '-'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Serveur local</span>
+          <span class="config-value">Flask (port 5000)</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Mode debug</span>
+          <span class="config-value ${c.security?.debug_mode ? 'status-warn' : 'status-ok'}">${c.security?.debug_mode ? '⚠️ Activé (prod déconseillée)' : 'Désactivé ✓'}</span>
+        </div>
+      </div>`;
+
+    // ── 3. Tableau des outils ────────────────────────────────────
+    const toolNames = {nmap:'Nmap', zap:'OWASP ZAP', nikto:'Nikto', burp:'Burp Suite', ai:'IA Anthropic'};
+    const toolModes = {
+      nmap: realTools.nmap ? 'Réel' : 'Simulé',
+      zap: realTools.zap ? 'Réel' : 'Simulé',
+      nikto: realTools.nikto ? 'Réel' : 'Simulé',
+      burp: realTools.burp ? 'Réel' : 'Simulé',
+      ai: c.anthropic_key_configured ? 'API externe' : 'Non configuré'
+    };
+    const toolStatus = {
+      nmap: true,
+      zap: realTools.zap ? true : false,
+      nikto: realTools.nikto ? true : false,
+      burp: realTools.burp ? true : false,
+      ai: c.anthropic_key_configured ? true : false
+    };
+    
+    document.getElementById('config-tools').innerHTML = `
+      <table class="history-table" style="margin-top:0">
+        <thead><tr><th>Outil</th><th>Mode</th><th>Disponibilité</th></tr></thead>
+        <tbody>
+          ${Object.keys(toolNames).map(k => `
+            <tr>
+              <td style="font-weight:600">${toolNames[k]}</td>
+              <td style="font-family:var(--mono);font-size:12px;color:${toolModes[k] === 'Réel' ? 'var(--green)' : toolModes[k] === 'Simulé' ? 'var(--yellow)' : 'var(--text3)'}">${toolModes[k]}</td>
+              <td><span class="config-value ${toolStatus[k] ? 'status-ok' : 'status-warn'}" style="font-size:11px">${toolStatus[k] ? '✓ Prêt' : '⚠️ Non configuré'}</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+
+    // ── 4. Services externes ─────────────────────────────────────
+    const zapHost = c.zap?.host || '127.0.0.1';
+    const zapPort = c.zap?.port || '8080';
+    const burpHost = c.burp?.host || '127.0.0.1';
+    const burpPort = c.burp?.port || '1337';
+    
+    document.getElementById('config-services').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="config-row">
+          <span class="config-label">API Anthropic</span>
+          <span class="config-value ${c.anthropic_key_configured ? 'status-ok' : 'status-warn'}">${c.anthropic_key_configured ? 'Clé API configurée' : 'Clé API manquante'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">OWASP ZAP</span>
+          <span class="config-value">${zapHost}:${zapPort}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">Burp Suite</span>
+          <span class="config-value">${burpHost}:${burpPort}</span>
+        </div>
+      </div>`;
+
+    // ── 5. Sécurité (inchangé) ───────────────────────────────────
+    const securityItems = [
+      {label:'HTTPS recommandé', ok: c.security?.https_recommended, desc:'Utiliser un reverse proxy avec certificat TLS'},
+      {label:'Accès limité au réseau interne', ok: true, desc:'Restreindre l\'accès au port 5000 via firewall'},
+      {label:'Port 5000 non exposé', ok: !c.security?.debug_mode, desc:'Ne pas exposer le port de développement sur Internet'},
+      {label:'Sauvegarde SQLite quotidienne', ok: true, desc:'Planifier une tâche cron pour copier scanner.db'},
+      {label:'Logs d\'audit activés', ok: c.security?.audit_logging, desc:'Toutes les actions sont tracées dans la base'},
+      {label:'Isolation admin / auditor', ok: c.security?.user_isolation, desc:'RBAC actif — les auditeurs voient leurs données uniquement'},
+      {label:'Chiffrement des cibles (AES-256)', ok: c.security?.target_encryption, desc:'Les URLs scannées sont chiffrées au repos'},
+      {label:'Rate limiting (connexion)', ok: c.security?.rate_limiting, desc:'Protection anti brute-force sur le formulaire de login'}
+    ];
+    
+    document.getElementById('config-security').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        ${securityItems.map(s => `
+          <div class="config-row">
+            <span>
+              <span class="config-label" style="display:block;margin-bottom:2px">${s.label}</span>
+              <span style="font-size:11px;color:var(--text3)">${s.desc}</span>
+            </span>
+            <span class="config-value ${s.ok ? 'status-ok' : 'status-warn'}">${s.ok ? '✓ Actif' : '⚠️ Configurer'}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top:12px;padding:12px;background:var(--greenbg);border-radius:var(--radius);border:1px solid var(--green)">
+        <span style="font-size:11px;color:var(--green);font-weight:600">🛡️ Score sécurité : ${Math.round(securityItems.filter(s=>s.ok).length / securityItems.length * 100)}% des recommandations appliquées</span>
+      </div>`;
+
+    // ── 6. Variables sensibles (inchangé) ───────────────────────
+    document.getElementById('config-env').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="config-row">
+          <span class="config-label">FLASK_SECRET_KEY</span>
+          <span class="config-value ${c.secret_key_configured ? 'status-ok' : 'status-bad'}">${c.secret_key_configured ? '✓ Configurée' : '✗ Non configurée'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">ANTHROPIC_API_KEY</span>
+          <span class="config-value ${c.anthropic_key_configured ? 'status-ok' : 'status-warn'}">${c.anthropic_key_configured ? '✓ Configurée' : '⚠️ Non configurée'}</span>
+        </div>
+        <div class="config-row">
+          <span class="config-label">DATABASE_URL</span>
+          <span class="config-value status-ok">✓ Configurée (SQLite)</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding:10px;background:rgba(255,211,42,0.08);border-radius:var(--radius);border:1px solid rgba(255,211,42,0.2)">
+        <span style="font-size:11px;color:var(--yellow)"><i class="bi bi-info-circle"></i> Les valeurs réelles des clés API et du secret Flask ne sont jamais affichées dans l'interface pour des raisons de sécurité.</span>
+      </div>`;
+
+  } catch(e){
+    console.error('Erreur loadConfig:', e);
+    document.querySelectorAll('#config-mode, #config-system, #config-tools, #config-services, #config-security, #config-env').forEach(el => {
+      el.innerHTML = `<div class="empty-history" style="padding:20px"><div class="empty-icon"><i class="bi bi-exclamation-triangle" style="color:var(--red)"></i></div><p style="color:var(--red)">Erreur de chargement : ${e.message}</p></div>`;
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//              FONCTION toggleTool() — Bascule Réel/Simulé
+// ═══════════════════════════════════════════════════════════════
+async function toggleTool(key, checked) {
+  try {
+    const r = await fetch('/api/config', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[key]: checked})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      // Recharger la config pour mettre à jour l'affichage
+      loadConfig();
+    } else {
+      alert('Erreur : ' + (d.error || 'Action non autorisée'));
+      loadConfig(); // Recharger pour remettre le toggle dans l'état précédent
+    }
+  } catch(e) {
+    alert('Erreur réseau lors de la modification');
+    loadConfig();
+  }
+}
+
+// ── History ──
+async function loadScanHistory(){try{const r=await fetch(historyUrl());if(!r.ok)return;allScans=await r.json();filteredScans=allScans;currentPage=1;populateDiffSelects();displayScanHistory();loadRecentActivity()}catch(e){}}
+async function loadRecentActivity(){try{const r=await fetch('/api/dashboard/stats');if(!r.ok)return;const d=await r.json();const c=document.getElementById('history-recent-activity');if(!c)return;if(!d.recent_activity?.length){c.innerHTML='<div class="hint2">Aucune activité récente.</div>';return}c.innerHTML=d.recent_activity.map(a=>{const time=a.timestamp?new Date(a.timestamp+'Z').toLocaleString('fr-FR'):'-';return `<div class="dashboard-list-item"><div class="dashboard-list-main"><div class="dashboard-list-title">${a.action_label||a.action||'Action'}</div><div class="dashboard-list-meta">${a.username||'Anonyme'} · ${time}</div></div><div class="dashboard-list-value">${a.scan_id?String(a.scan_id).slice(0,8):'-'}</div></div>`}).join('')}catch(e){}}
+async function loadProjects(){try{const r=await fetch('/api/projects');if(!r.ok)return;allProjects=await r.json();loadProjectSelects();renderProjects()}catch(e){}}
+function loadProjectSelects(){const s=document.getElementById('project-select'),d=document.getElementById('project-dashboard-select');const opts=`<option value="">Sans projet / Global</option>`+allProjects.map(p=>`<option value="${p.id}">${p.name} — ${p.client||'Client non défini'}</option>`).join('');if(s)s.innerHTML=opts;if(d)d.innerHTML=opts}
+function renderProjects(){const c=document.getElementById('projects-list');if(!allProjects.length){c.innerHTML='<div class="empty-history"><div class="empty-icon"><i class="bi bi-folder2-open"></i></div><h3>Aucun projet</h3></div>';return}c.innerHTML=allProjects.map(p=>`<div class="finding2" style="margin-bottom:10px"><div class="f-head"><span class="f-name">${p.name}</span><span class="f-badge">${p.environment}</span></div><div class="f-detail">${p.client||'Client non défini'}${p.description?`<br>${p.description}`:''}</div><div class="ann-row"><button class="btn-action btn-detail" onclick="loadProjectDashboard('${p.id}')">Voir</button><button class="btn-action btn-delete" onclick="deleteProject('${p.id}')">Suppr.</button></div></div>`).join('')}
+async function createProject(e){e.preventDefault();const f=e.target;const d=Object.fromEntries(new FormData(f));const r=await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});const j=await r.json();if(r.ok){alert(j.message);f.reset();await loadProjects()}else alert(j.error)}
+async function deleteProject(id){if(!confirm('Supprimer le projet ? Les scans restent conservés.'))return;const r=await fetch(`/api/projects/${id}`,{method:'DELETE'});const j=await r.json();if(r.ok){await loadProjects();loadScanHistory()}else alert(j.error)}
+async function loadProjectDashboard(id){selectedProjectId=id;const r=await fetch(`/api/projects/${id||'global'}/stats`);const j=await r.json();if(!r.ok){alert(j.error);return}const rd=j.risk_distribution||{};document.getElementById('project-dashboard').innerHTML=`<div class="stat-grid">${['total_scans','total_findings','avg_score'].map(k=>`<div class="stat-c"><div class="stat-num2 num-blue">${k==='avg_score'?(j[k]||0)+'/100':j[k]||0}</div><div class="stat-lbl2">${k}</div></div>`).join('')}</div><div class="finding-comments">Critique : ${rd.Critique||0} · Élevé : ${rd.Élevé||0} · Moyen : ${rd.Moyen||0} · Faible : ${rd.Faible||0}</div>`;loadScanHistory()}
+function historyUrl(){let url='/api/scans?limit=50';const df=document.getElementById('filter-date-from')?.value;if(df)url+=`&date_from=${df}`;const dt=document.getElementById('filter-date-to')?.value;if(dt)url+=`&date_to=${dt}`;const tool=document.getElementById('filter-tool')?.value;if(tool)url+=`&tool=${tool}`;const min=document.getElementById('filter-score-min')?.value;if(min)url+=`&score_min=${min}`;const max=document.getElementById('filter-score-max')?.value;if(max)url+=`&score_max=${max}`;const pid=document.getElementById('project-select')?.value;if(pid)url+=`&project_id=${pid}`;return url}
+async function applyHistoryFilters(){currentPage=1;await loadScanHistory()}
+async function clearHistoryFilters(){['filter-date-from','filter-date-to','filter-tool','filter-score-min','filter-score-max'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=''});await loadScanHistory()}
+function populateDiffSelects(){const left=document.getElementById('diff-left'),right=document.getElementById('diff-right'),hLeft=document.getElementById('history-diff-left'),hRight=document.getElementById('history-diff-right');const options=allScans.filter(s=>s.status==='done').sort((a,b)=>(b.started_at||'').localeCompare(a.started_at||'')).map(s=>`<option value="${s.id}">${s.target} — ${s.score||'-'} — ${(s.started_at||'').substring(0,16)}</option>`).join('');[left,hLeft].forEach(s=>{if(s)s.innerHTML=options});[right,hRight].forEach(s=>{if(s){s.innerHTML=options;if(options){const done=allScans.filter(x=>x.status==='done');s.selectedIndex=done.length>1?1:0}}})}
+function displayScanHistory(){
+  const c=document.getElementById('history-content');
+  if(!filteredScans.length){c.innerHTML='<div class="empty-history"><div class="empty-icon"><i class="bi bi-clock-history"></i></div><h3>Aucun historique</h3></div>';return}
+  const tp=Math.ceil(filteredScans.length/SCANS_PER_PAGE),start=(currentPage-1)*SCANS_PER_PAGE;
+  const page=filteredScans.slice(start,start+SCANS_PER_PAGE);
+  let h='<table class="history-table"><thead><tr><th>Projet</th><th>Cible</th><th>Score</th><th>Risque</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
+  page.forEach(s=>{
+    const d=new Date(s.created_at).toLocaleDateString('fr-FR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const rl={Critique:'risk-c',Élevé:'risk-h',Moyen:'risk-m',Faible:'risk-l'}[s.risk_level]||'risk-m';
+    h+=`<tr><td>${s.project_name||'-'}</td><td>${s.target}</td><td class="score-col">${s.score||'-'}</td><td class="${rl}">${s.risk_level||'-'}</td><td class="time-col">${d}</td><td><button class="btn-action btn-detail" onclick="viewScanDetail('${s.id}')"><i class="bi bi-eye"></i></button><button class="btn-action btn-delete" onclick="deleteScan('${s.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  if(tp>1){h+='<div style="display:flex;gap:8px;margin-top:16px;justify-content:center">';for(let i=1;i<=tp;i++)h+=`<button class="page-btn ${i===currentPage?'active':''}" onclick="currentPage=${i};displayScanHistory()">${i}</button>`;h+='</div>';}
+  c.innerHTML=h;
+}
+function filterScans(){const q=document.getElementById('history-search').value.toLowerCase();filteredScans=allScans.filter(s=>s.target?.toLowerCase().includes(q)||s.risk_level?.toLowerCase().includes(q));currentPage=1;displayScanHistory()}
+async function deleteScan(id){if(!confirm('Supprimer ?'))return;await fetch(`/api/scans/${id}`,{method:'DELETE'});loadScanHistory()}
+async function viewScanDetail(id){const r=await fetch(`/api/scans/${id}`);if(!r.ok)return;const d=await r.json();currentScanId=id;const stats=d.results?.stats||{};const data={...(d.results||{}),target:d.scan?.target||d.target,score:d.scan?.score||d.score,risk_level:d.scan?.risk_level||d.risk_level,tools_used:d.scan?.tools||d.tools_used,stats,findings:d.findings||d.results?.findings||[]};showPanel('results');renderResults(data)}
+
+// ── Dashboard FIX: pas de maintainAspectRatio:false — hauteur fixe via chart-wrapper CSS ──
+async function loadDashboard(){
+  try{
+    const r=await fetch('/api/dashboard/stats');if(!r.ok)return;
+    const d=await r.json();
+    document.getElementById('dash-total-scans').textContent=d.total_scans||0;
+    document.getElementById('dash-total-findings').textContent=d.total_findings||0;
+    document.getElementById('dash-avg-score').textContent=(d.avg_score||0)+'/100';
+    document.getElementById('dash-risk-crit').textContent=Object.values(d.risk_distribution||{}).reduce((a,b)=>a+b,0)||0;
+    if(d.score_history?.length) renderScoreChart(d.score_history);
+    if(d.owasp_findings?.length) renderOwaspChart(d.owasp_findings);
+    if(d.top_targets?.length) document.getElementById('dash-top-targets').innerHTML=d.top_targets.map((t,i)=>`<div class="dashboard-list-item"><div class="dashboard-list-main"><div class="dashboard-list-title">${i+1}. ${t.target}</div><div class="dashboard-list-meta">Scans effectués</div></div><div class="dashboard-list-value">${t.count}</div></div>`).join('')||'<div class="hint2">Aucune cible scannée.</div>';
+  }catch(e){console.error('Dashboard error:',e)}
+}
+
+function renderScoreChart(h){
+  if(scoreChartInstance) scoreChartInstance.destroy();
+  const ctx=document.getElementById('scoreChart').getContext('2d');
+  scoreChartInstance=new Chart(ctx,{
+    type:'line',
+    data:{labels:h.map(x=>x.date?x.date.substring(5,16):''),datasets:[{label:'Score',data:h.map(x=>x.score),borderColor:'#2ed573',backgroundColor:'rgba(46,213,115,0.1)',borderWidth:2,fill:true,tension:0.3,pointRadius:2}]},
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#9098b0'}},x:{grid:{display:false},ticks:{color:'#9098b0',maxTicksLimit:8}}}}
+  });
+}
+
+function renderOwaspChart(f){
+  if(owaspChartInstance) owaspChartInstance.destroy();
+  const ctx=document.getElementById('owaspChart').getContext('2d');
+  const colors=['#ff4757','#ff9f43','#ffd32a','#2ed573','#1e90ff','#5352ed','#ff6b7a','#a29bfe','#00b894','#fd79a8'];
+  owaspChartInstance=new Chart(ctx,{
+    type:'bar',
+    data:{labels:f.map(x=>x.id),datasets:[{label:'Findings',data:f.map(x=>x.count),backgroundColor:f.map((_,i)=>colors[i%colors.length]),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#9098b0'}},x:{grid:{display:false},ticks:{color:'#9098b0'}}}}
+  });
+}
+
+// ── Scheduler ──
+async function loadScheduledScans(){
+  try{
+    const r=await fetch('/api/scheduler/tasks');if(!r.ok)return;
+    const tasks=await r.json(),c=document.getElementById('scheduled-tasks-list');
+    if(!tasks?.length){c.innerHTML='<div class="empty-history"><div class="empty-icon"><i class="bi bi-clock-history"></i></div><h3>Aucun scan programmé</h3></div>';return}
+    let h='<table class="history-table"><thead><tr><th>Cible</th><th>Intervalle</th><th>Prochain</th><th>Actions</th></tr></thead><tbody>';
+    tasks.forEach(t=>{
+      const next=t.next_run?new Date(t.next_run).toLocaleDateString('fr-FR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'-';
+      const int=t.interval_minutes>=1440?`${t.interval_minutes/1440}j`:t.interval_minutes>=60?`${t.interval_minutes/60}h`:`${t.interval_minutes}min`;
+      h+=`<tr><td style="font-family:var(--mono);font-size:12px">${t.target}</td><td>${int}</td><td class="time-col">${next}</td><td><button class="btn-action btn-delete" onclick="deleteScheduledTask(${t.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+    });
+    h+='</tbody></table>';c.innerHTML=h;
+  }catch(e){}
+}
+async function createScheduledScan(){
+  const t=document.getElementById('sched-target').value.trim(),i=parseInt(document.getElementById('sched-interval').value);
+  if(!t){alert('Entrez une cible');return}
+  const r=await fetch('/api/scheduler/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:t,tools:[...selT],owasp_ids:[...selO],interval_minutes:i})});
+  const d=await r.json();
+  if(r.ok){alert('✅ Programmée !');document.getElementById('sched-target').value='';loadScheduledScans()}else{alert(d.error)}
+}
+async function deleteScheduledTask(id){if(!confirm('Supprimer ?'))return;await fetch(`/api/scheduler/tasks/${id}`,{method:'DELETE'});loadScheduledScans()}
+
+// ── Users / Audit / GDPR ──
+async function createUser(e){e.preventDefault();const f=e.target,d=Object.fromEntries(new FormData(f));const r=await fetch('/api/admin/add-user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});const j=await r.json();if(r.ok){alert(j.message);f.reset();loadUsers()}else alert('Erreur: '+j.error)}
+async function loadUsers(){try{const r=await fetch('/api/admin/get-users');if(!r.ok)return;const users=await r.json(),tb=document.getElementById('user-table-body');tb.innerHTML='';users.forEach(u=>{const tr=document.createElement('tr');tr.innerHTML=`<td style="padding:10px;font-weight:600">${u.username}</td><td style="padding:10px"><span class="user-role ${u.role}" style="font-size:10px">${u.role.toUpperCase()}</span></td><td style="padding:10px"><button class="btn-action btn-delete" onclick="deleteUser('${u.username}')">Suppr.</button></td>`;tb.appendChild(tr)})}catch(e){}}
+async function deleteUser(u){if(!confirm('Supprimer ?'))return;const r=await fetch(`/api/admin/delete-user/${u}`,{method:'DELETE'});const j=await r.json();if(r.ok){alert(j.message);loadUsers()}else alert(j.error)}
+async function loadAuditActions(){try{const r=await fetch('/api/audit/actions');if(!r.ok)return;const a=await r.json(),s=document.getElementById('audit-action-filter');Object.entries(a).forEach(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v;s.appendChild(o)})}catch(e){}}
+async function loadGdprUsers(){try{const r=await fetch('/api/admin/get-users');if(!r.ok)return;const u=await r.json(),s=document.getElementById('gdpr-user-select');u.forEach(u=>{const o=document.createElement('option');o.value=u.username;o.textContent=`${u.username} (${u.role})`;s.appendChild(o)})}catch(e){}}
+async function gdprForget(){const s=document.getElementById('gdpr-user-select'),u=s.value;if(!u){alert('Sélectionnez un utilisateur');return}if(!confirm(`Effacer ${u} ? (action irréversible)`))return;const r=await fetch('/api/gdpr/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u})});const j=await r.json();if(r.ok){alert(j.message);loadUsers();loadGdprUsers()}else alert(j.error)}
+
+let auditPage=1;
+async function loadAuditLogs(){
+  const af=document.getElementById('audit-action-filter').value,uf=document.getElementById('audit-user-filter').value;
+  let url=`/api/audit/logs?page=${auditPage}&limit=20`;if(af)url+=`&action=${af}`;if(uf)url+=`&username=${encodeURIComponent(uf)}`;
+  try{const r=await fetch(url);if(!r.ok)return;const d=await r.json();displayAuditLogs(d)}catch(e){}
+}
+function displayAuditLogs(d){
+  const c=document.getElementById('audit-logs-content'),logs=d.logs||[];
+  if(!logs.length){c.innerHTML='<div class="empty-history"><div class="empty-icon"><i class="bi bi-journal-text"></i></div><h3>Aucun log</h3></div>';return}
+  let h='<table class="history-table"><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>IP</th></tr></thead><tbody>';
+  logs.forEach(l=>{
+    const dt=new Date(l.timestamp+'Z').toLocaleDateString('fr-FR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    h+=`<tr><td class="time-col">${dt}</td><td>${l.username}</td><td><span style="background:var(--bg4);padding:2px 6px;border-radius:4px;font-size:11px">${l.action_label||l.action}</span></td><td style="font-size:11px;color:var(--text3)">${l.ip_address}</td></tr>`;
+  });
+  h+='</tbody></table>';c.innerHTML=h;
+}
+
+// ── Sidebar ──
+function toggleSidebar(){
+  const s=document.querySelector('.sidebar'),b=document.getElementById('sidebar-toggle');
+  if(window.innerWidth<=900){s.classList.toggle('collapsed-mobile');b.textContent=s.classList.contains('collapsed-mobile')?'☰':'✕'}
+  else{s.classList.toggle('collapsed');b.textContent=s.classList.contains('collapsed')?'☰':'✕'}
+}
+document.addEventListener('click',function(e){const s=document.querySelector('.sidebar');if(window.innerWidth<=900&&!s.contains(e.target)&&!e.target.closest('#sidebar-toggle')){s.classList.add('collapsed-mobile');document.getElementById('sidebar-toggle').textContent='☰'}});
+
+// ── Init ──
+window.addEventListener('load',()=>{setTheme(currentTheme);setLang(currentLang);loadProjects();loadScanHistory();});
+</script>
+</body>
+</html>
