@@ -49,7 +49,17 @@ SENSITIVE_PATHS = [
 class NiktoScanner:
     def __init__(self, target: str):
         self.target = target
-        self.use_real = NIKTO_USE_REAL and shutil.which("nikto") is not None
+        self.use_real = NIKTO_USE_REAL and self._is_real_available()
+
+    def _is_real_available(self) -> bool:
+        return shutil.which("nikto") is not None or shutil.which("wsl.exe") is not None
+
+    def _resolve_nikto_command(self) -> list:
+        if shutil.which("nikto") is not None:
+            return ["nikto"]
+        if shutil.which("wsl.exe") is not None:
+            return ["wsl.exe", "bash", "-lc", "nikto --version >/dev/null 2>&1 && nikto"]
+        return None
 
     def run(self) -> list:
         if self.use_real:
@@ -64,13 +74,16 @@ class NiktoScanner:
         nikto_output_path = nikto_output.name
         nikto_output.close()
 
-        cmd = [
-            "nikto", "-h", self.target,
-            "-Format", "csv",
-            "-output", nikto_output_path,
-            "-Tuning", "123456789abc",
-            "-timeout", str(NIKTO_TIMEOUT)
-        ]
+        command = self._resolve_nikto_command()
+        if not command:
+            return []
+
+        cmd = list(command)
+        if command[0] == "nikto":
+            cmd.extend(["-h", self.target, "-Format", "csv", "-output", nikto_output_path,
+                        "-Tuning", "123456789abc", "-timeout", str(NIKTO_TIMEOUT)])
+        else:
+            cmd.extend(["-lc", f"nikto -h {self.target} -Format csv -output {nikto_output_path} -Tuning 123456789abc -timeout {NIKTO_TIMEOUT}"])
         try:
             subprocess.run(cmd, timeout=NIKTO_TIMEOUT + 30,
                            capture_output=True, text=True)

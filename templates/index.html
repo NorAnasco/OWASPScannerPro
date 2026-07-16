@@ -257,7 +257,7 @@ a{color:var(--cyan)}
       <div class="nav-item" onclick="showPanel('dashboard')"><i class="bi bi-speedometer2 nav-icon"></i> Dashboard</div>
       <div class="nav-item" onclick="showPanel('results')"><i class="bi bi-file-earmark-bar-graph nav-icon"></i> Rapport actuel</div>
       <div class="nav-item" onclick="showPanel('history')"><i class="bi bi-clock-history nav-icon"></i> Historique</div>
-      <div class="nav-item" onclick="showPanel('admin')"><i class="bi bi-people nav-icon"></i> Gestion Utilisateurs</div>
+      {% if session.get('role') == 'admin' %}<div class="nav-item" onclick="showPanel('admin')"><i class="bi bi-people nav-icon"></i> Gestion Utilisateurs</div>{% endif %}
     </nav>
     <div class="sidebar-user-panel">
       <div class="user-badge">
@@ -598,16 +598,76 @@ async function startScan(){
     const d=await r.json();
     if(d.error){alert(d.error);resetBtn();return;}
     currentScanId=d.scan_id;
-    scanTimeout=setTimeout(()=>recoverStuckScan(d.scan_id),300000);
-    evtSource=new EventSource(`/api/scan/stream/${d.scan_id}`);
-    evtSource.onmessage=e=>{const evt=JSON.parse(e.data);if(evt.type==='phase'){setProgress(evt.pct,evt.message)}else if(evt.type==='done'){setProgress(100,'Terminé !');evtSource.close();setTimeout(()=>{document.getElementById('prog-wrap').style.display='none';renderResults(evt.results);showPanel('results');document.getElementById('header-status').textContent='Rapport prêt'},800);resetBtn()}else if(evt.type==='error'){alert(evt.message);evtSource.close();resetBtn()}};
-    evtSource.onerror=()=>{evtSource.close();resetBtn()};
+    scanTimeout=setTimeout(()=>recoverStuckScan(d.scan_id),600000);
+    // Polling au lieu du SSE (plus fiable avec Nginx)
+    pollScanStatus(d.scan_id);
   }catch(e){alert('Erreur réseau');resetBtn()}
 }
 function setProgress(pct,lbl){document.getElementById('prog-fill').style.width=pct+'%';document.getElementById('prog-pct').textContent=pct+'%';document.getElementById('prog-lbl').textContent=lbl;}
 function setPhases(ph,idx){document.getElementById('phases').innerHTML=ph.map((p,i)=>`<div class="phase-row2"><div class="ph-dot ${i<idx?'ph-done':i===idx?'ph-run':'ph-wait'}"></div><span class="ph-txt">${p}</span></div>`).join('');}
 function resetBtn(){if(scanTimeout)clearTimeout(scanTimeout);document.getElementById('scan-btn').disabled=false;document.getElementById('scan-btn').innerHTML='<i class="bi bi-play-fill"></i> Lancer le scan';}
-async function recoverStuckScan(id){try{const r=await fetch(`/api/scan/status/${id}`);if(!r.ok)return;const s=await r.json();const last=s.events?.slice(-1)[0]||{};if(last.pct===96||s.status==='running'){document.getElementById('batch-status').textContent=`Scan bloqué à 96% depuis trop longtemps. Statut backend : ${s.status}. Attente ou relance recommandée.`;alert(`Le scan est bloqué à 96% côté interface. Le backend indique : ${s.status}. Relance ou attends la fin des écritures DB.`)}else if(s.status==='done' && s.results_ready){const d=await fetch(`/api/scan/result/${id}`);const j=await d.json();renderResults(j);showPanel('results')}}catch(e){console.error(e)}}
+async function recoverStuckScan(id){try{const r=await fetch(`/api/scan/status/${id}`);if(!r.ok)return;const s=await r.json();const last=s.events?.slice(-1)[0]||{};const hasResults=s.status==='done' && s.results_ready;if(hasResults){const d=await fetch(`/api/scan/result/${id}`);const j=await d.json();renderResults(j);showPanel('results');return;}if(s.status==='running' && last.pct===96){document.getElementById('batch-status').textContent='Le scan est encore en cours, la finalisation peut prendre un peu plus de temps.';return;}if(s.status==='running'){document.getElementById('batch-status').textContent='Le scan est encore en cours. Veuillez patienter.';}}catch(e){console.error(e)}}
+// ── Polling du statut (remplace le SSE pour compatibilité Nginx) ──
+function pollScanStatus(scanId) {
+  let pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/scan/status/${scanId}`);
+      if (!r.ok) { clearInterval(pollInterval); return; }
+      const s = await r.json();
+      
+      // Afficher les événements récents
+      const events = s.events || [];
+      const lastEvent = events[events.length - 1];
+      if (lastEvent && lastEvent.pct) {
+        setProgress(lastEvent.pct, lastEvent.message || '');
+      }
+      
+      // Mettre à jour les phases
+      if (events.length > 0) {
+        const phases = ['init','nmap','zap','nikto','burp','ai','report','db','finalize'];
+        let currentPhaseIdx = -1;
+        for (let i = 0; i < phases.length; i++) {
+          if (events.some(e => e.phase === phases[i])) {
+            currentPhaseIdx = i;
+          }
+        }
+        const phaseLabels = ['Résolution DNS','Nmap','ZAP','Nikto','Burp','IA','Rapport','Sauvegarde','Finalisation'];
+        setPhases(phaseLabels, currentPhaseIdx);
+      }
+      
+      // Scan terminé avec résultats
+      if (s.status === 'done' && s.results_ready) {
+        clearInterval(pollInterval);
+        if (scanTimeout) clearTimeout(scanTimeout);
+        setProgress(100, 'Terminé !');
+        setTimeout(async () => {
+          try {
+            const res = await fetch(`/api/scan/result/${scanId}`);
+            if (res.ok) {
+              const results = await res.json();
+              document.getElementById('prog-wrap').style.display = 'none';
+              renderResults(results);
+              showPanel('results');
+              document.getElementById('header-status').textContent = 'Rapport prêt';
+            }
+          } catch(e) { console.error(e); }
+          resetBtn();
+        }, 800);
+      }
+      
+      // Scan en erreur
+      if (s.status === 'error') {
+        clearInterval(pollInterval);
+        alert(s.events?.slice(-1)[0]?.message || 'Erreur lors du scan');
+        resetBtn();
+      }
+      
+    } catch(e) {
+      clearInterval(pollInterval);
+      resetBtn();
+    }
+  }, 1500); // Interroger toutes les 1.5 secondes
+}
 async function annotateFinding(id){const status=document.getElementById(`ann-status-${id}`).value;const comment=document.getElementById(`ann-comment-${id}`).value.trim();if(!comment){alert('Ajoutez un commentaire.');return}const r=await fetch(`/api/findings/${id}/annotate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,comment})});const j=await r.json();if(r.ok){alert(j.message);document.getElementById(`ann-comment-${id}`).value='';loadFindingComments(id)}else alert(j.error)}
 async function loadFindingComments(id){const r=await fetch(`/api/findings/${id}/comments`);const j=await r.json();const c=document.getElementById(`comments-${id}`);if(!r.ok){c.textContent=j.error||'Erreur';return}const comments=j.comments||[];c.innerHTML=comments.length?comments.map(x=>`<div><b>${x.created_by}</b> — ${x.created_at}<br>${x.comment}</div>`).join('<hr style="border-color:var(--border);margin:6px 0">'):'Aucun commentaire.'}
 async function startBatchScan(){const raw=document.getElementById('batch-targets').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(raw.length<2){alert('Entrez au moins deux cibles, une par ligne.');return}document.getElementById('batch-btn').disabled=true;document.getElementById('batch-status').textContent='Lancement des scans multi-cibles…';const r=await fetch('/api/batch-scans/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targets:raw,tools:[...selT],owasp_ids:[...selO],project_id:document.getElementById('project-select').value})});const d=await r.json();if(r.ok){document.getElementById('batch-status').textContent=`Lot lancé : ${d.scan_ids.length} scan(s) en parallèle.`;currentScanId=d.scan_ids[0];loadScanHistory()}else{document.getElementById('batch-status').textContent=d.error||'Erreur';alert(d.error)}document.getElementById('batch-btn').disabled=false}
@@ -615,21 +675,55 @@ async function compareScans(){const active=document.querySelector('.panel.active
 function renderDiff(d){const s=d.summary||{};const html=`<div class="diff-summary"><div class="diff-box"><div class="diff-num diff-new">${s.new_count||0}</div><div>Nouvelles</div></div><div class="diff-box"><div class="diff-num diff-fixed">${s.fixed_count||0}</div><div>Corrigées</div></div><div class="diff-box"><div class="diff-num diff-changed">${s.changed_count||0}</div><div>Modifiées</div></div><div class="diff-box"><div class="diff-num diff-unchanged">${s.unchanged_count||0}</div><div>Stables</div></div></div><div class="grid2"><div class="card"><div class="sec-h" style="margin-top:0">Nouvelles vulnérabilités</div>${(d.new||[]).map(f=>`<div class="finding-comments"><b>${f.owasp_id}</b> — ${f.nom}<br><span style="color:var(--cyan)">CVSS ${Number(f.cvss||0).toFixed(1)} · ${f.outil}</span></div>`).join('')||'<div class="hint2">Aucune nouvelle vulnérabilité.</div>'}</div><div class="card"><div class="sec-h" style="margin-top:0">Corrigées</div>${(d.fixed||[]).map(f=>`<div class="finding-comments"><b>${f.owasp_id}</b> — ${f.nom}<br><span style="color:var(--green)">CVSS ${Number(f.cvss||0).toFixed(1)} · ${f.outil}</span></div>`).join('')||'<div class="hint2">Aucune vulnérabilité corrigée.</div>'}</div></div><div class="card" style="margin-top:12px"><div class="sec-h" style="margin-top:0">Modifiées</div>${(d.changed||[]).map(x=>`<div class="finding-comments"><b>${x.after.owasp_id}</b> — ${x.after.nom}<br>Avant : ${x.before.statut} / CVSS ${Number(x.before.cvss||0).toFixed(1)} → Après : ${x.after.statut} / CVSS ${Number(x.after.cvss||0).toFixed(1)}</div>`).join('')||'<div class="hint2">Aucune modification.</div>'}</div>`;
   const active=document.querySelector('.panel.active')?.id;const target=active==='panel-history'?document.getElementById('diff-content-history'):document.getElementById('diff-content');if(target)target.innerHTML=html;showPanel('results')}
 
+const toolLabels={nmap:'Nmap',zap:'ZAP',nikto:'Nikto',burp:'Burp',ai:'IA'};
+
+function summarizeExecutionModes(findings){
+  const modes={};
+  for(const f of findings||[]){
+    const source=(f.source||'').toLowerCase();
+    const outil=(f.outil||'').toLowerCase();
+    let key='other';
+    if(source.includes('nmap')||outil.includes('nmap')) key='nmap';
+    else if(source.includes('zap')||outil.includes('zap')) key='zap';
+    else if(source.includes('nikto')||outil.includes('nikto')) key='nikto';
+    else if(source.includes('burp')||outil.includes('burp')) key='burp';
+    else if(source.includes('ai')||outil.includes('ai')) key='ai';
+    if(key==='other') continue;
+    const mode=source.includes('real')?'Réel':(source.includes('simulated')||source.includes('passive'))?'Simulé':'Inconnu';
+    modes[key]=mode;
+  }
+  return modes;
+}
 function renderResults(r){
-  const st=r.stats||{},score=Math.round(r.score||0);
-  const rc={Critique:'var(--red)',Élevé:'var(--orange)',Moyen:'var(--yellow)',Faible:'var(--green)'}[r.risk_level]||'var(--text)';
-  const c=2*Math.PI*30,dash=c-(score/100)*c;
-  document.getElementById('results-content').innerHTML=`
-    <div class="score-card"><div class="score-ring"><svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--bg4)" stroke-width="5"/><circle cx="36" cy="36" r="30" fill="none" stroke="${rc}" stroke-width="5" stroke-dasharray="${c}" stroke-dashoffset="${dash}" stroke-linecap="round"/></svg><div class="score-text" style="color:${rc}">${score}</div></div><div class="score-info"><h3>Score: ${score}/100 — ${r.risk_level}</h3><p>${r.target}</p></div></div>
-    <div class="stat-grid">${['critique','élevé','moyen','ok'].map(k=>`<div class="stat-c"><div class="stat-num2 ${k==='critique'?'num-red':k==='élevé'?'num-orange':k==='moyen'?'num-blue':'num-green'}">${st[k]||0}</div><div class="stat-lbl2">${k.toUpperCase()}</div></div>`).join('')}</div>
-    <div class="sec-h">Findings</div><div class="hint2" style="margin-bottom:12px">Validation manuelle : utilise le menu de chaque finding pour le marquer comme confirmé, faux positif ou en correction.</div>${(r.findings||[]).map(f=>{
-      const ann=f.annotation_status||'none';
-      const annLabel={none:'Non annoté',faux_positif:'Faux positif',confirme:'Confirmé',en_correction:'En correction',corrige:'Corrigé'}[ann]||ann;
-      const annClass={none:'ann-none',faux_positif:'ann-faux',confirme:'ann-confirm',en_correction:'ann-correction',corrige:'ann-corrige'}[ann]||'ann-none';
-      return `<div class="finding2 f-${f.statut==='critique'?'crit':f.statut==='élevé'?'high':f.statut==='moyen'?'med':'ok'}"><div class="f-head"><span class="f-name">${f.owasp_id} — ${f.nom}</span><span class="f-badge fb-${(f.outil||'').toLowerCase().startsWith('nmap')?'nmap':(f.outil||'').toLowerCase().includes('zap')?'zap':(f.outil||'').toLowerCase().includes('nikto')?'nikto':(f.outil||'').toLowerCase().includes('burp')?'burp':'ai'}">${f.outil}</span><span class="cvss-badge">CVSS ${Number(f.cvss||0).toFixed(1)}</span><span class="annotation-badge ${annClass}">${annLabel}</span></div><div class="f-detail">${f.detail||''}</div>${f.preuve?`<div class="f-proof">${f.preuve}</div>`:''}${f.remediation?`<div class="f-fix">${f.remediation}</div>`:''}
-      ${f.id?`<div class="ann-row"><select id="ann-status-${f.id}" class="mini-select"><option value="none" ${ann==='none'?'selected':''}>Non annoté</option><option value="faux_positif" ${ann==='faux_positif'?'selected':''}>Faux positif</option><option value="confirme" ${ann==='confirme'?'selected':''}>Confirmé</option><option value="en_correction" ${ann==='en_correction'?'selected':''}>En correction</option><option value="corrige" ${ann==='corrige'?'selected':''}>Corrigé</option></select><input id="ann-comment-${f.id}" class="mini-input" placeholder="Commentaire..." style="flex:1;min-width:180px"><button class="btn-action btn-detail" onclick="annotateFinding(${f.id})">Annoter</button><button class="btn-action" onclick="loadFindingComments(${f.id})">Commentaires</button></div><div id="comments-${f.id}" class="finding-comments"></div>`:`<div class="hint2">Annotation disponible après sauvegarde en base.</div>`}</div>`;
-    }).join('')}
-    <div class="act-row2"><a class="btn-export" href="/api/report/${currentScanId}/markdown" download>⬇ MD</a><a class="btn-export" href="/api/report/${currentScanId}/json" download>⬇ JSON</a><a class="btn-export" href="/api/report/${currentScanId}/pdf" download>⬇ PDF</a></div>`;
+  try {
+    const payload = r && typeof r === 'object' ? r : {};
+    const results = payload.results || payload;
+    const findings = Array.isArray(results.findings) ? results.findings : (Array.isArray(payload.findings) ? payload.findings : []);
+    const stats = results.stats || payload.stats || {};
+    const score = Number(results.score ?? payload.score ?? 0);
+    const riskLevel = results.risk_level || payload.risk_level || 'Inconnu';
+    const target = results.target || payload.target || 'Cible inconnue';
+    const rc={Critique:'var(--red)',Élevé:'var(--orange)',Moyen:'var(--yellow)',Faible:'var(--green)'}[riskLevel]||'var(--text)';
+    const c=2*Math.PI*30,dash=c-(score/100)*c;
+    const executionModes=summarizeExecutionModes(findings);
+    const modeBadges=Object.entries(executionModes).map(([key,mode])=>`<span style="display:inline-block;padding:4px 8px;border-radius:999px;margin-right:6px;margin-bottom:6px;font-size:11px;background:${mode==='Réel'?'rgba(34,197,94,.16)':'rgba(245,158,11,.16)'};color:${mode==='Réel'?'var(--green)':'var(--orange)'}">${toolLabels[key] || key.toUpperCase()} · ${mode}</span>`).join('');
+    const scanIdForExport = currentScanId || payload.scan_id || results.scan_id || '';
+    document.getElementById('results-content').innerHTML=`
+      <div class="score-card"><div class="score-ring"><svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--bg4)" stroke-width="5"/><circle cx="36" cy="36" r="30" fill="none" stroke="${rc}" stroke-width="5" stroke-dasharray="${c}" stroke-dashoffset="${dash}" stroke-linecap="round"/></svg><div class="score-text" style="color:${rc}">${Math.round(score)}</div></div><div class="score-info"><h3>Score: ${Math.round(score)}/100 — ${riskLevel}</h3><p>${target}</p></div></div>
+      <div class="stat-grid">${['critique','élevé','moyen','ok'].map(k=>`<div class="stat-c"><div class="stat-num2 ${k==='critique'?'num-red':k==='élevé'?'num-orange':k==='moyen'?'num-blue':'num-green'}">${stats[k]||0}</div><div class="stat-lbl2">${k.toUpperCase()}</div></div>`).join('')}</div>
+      <div class="sec-h">Findings</div><div class="hint2" style="margin-bottom:8px">Validation manuelle : utilise le menu de chaque finding pour le marquer comme confirmé, faux positif ou en correction.</div><div class="hint2" style="margin-bottom:12px">Modes d'exécution utilisés : ${modeBadges || '<span>Aucun mode détecté</span>'}</div>${findings.map(f=>{
+        const ann=f.annotation_status||'none';
+        const annLabel={none:'Non annoté',faux_positif:'Faux positif',confirme:'Confirmé',en_correction:'En correction',corrige:'Corrigé'}[ann]||ann;
+        const annClass={none:'ann-none',faux_positif:'ann-faux',confirme:'ann-confirm',en_correction:'ann-correction',corrige:'ann-corrige'}[ann]||'ann-none';
+        const sourceMode=(f.source||'').includes('real')?'Réel':((f.source||'').includes('simulated')||(f.source||'').includes('passive'))?'Simulé':'Inconnu';
+        return `<div class="finding2 f-${f.statut==='critique'?'crit':f.statut==='élevé'?'high':f.statut==='moyen'?'med':'ok'}"><div class="f-head"><span class="f-name">${f.owasp_id} — ${f.nom}</span><span class="f-badge fb-${(f.outil||'').toLowerCase().startsWith('nmap')?'nmap':(f.outil||'').toLowerCase().includes('zap')?'zap':(f.outil||'').toLowerCase().includes('nikto')?'nikto':(f.outil||'').toLowerCase().includes('burp')?'burp':'ai'}">${f.outil}</span><span class="cvss-badge">CVSS ${Number(f.cvss||0).toFixed(1)}</span><span class="annotation-badge ${annClass}">${annLabel}</span></div><div class="f-detail">${f.detail||''}</div>${f.preuve?`<div class="f-proof">${f.preuve}</div>`:''}${f.remediation?`<div class="f-fix">${f.remediation}</div>`:''}<div class="hint2" style="margin-top:8px">Mode : <b>${sourceMode}</b> · Source : ${f.source || 'n/a'}</div>
+        ${f.id?`<div class="ann-row"><select id="ann-status-${f.id}" class="mini-select"><option value="none" ${ann==='none'?'selected':''}>Non annoté</option><option value="faux_positif" ${ann==='faux_positif'?'selected':''}>Faux positif</option><option value="confirme" ${ann==='confirme'?'selected':''}>Confirmé</option><option value="en_correction" ${ann==='en_correction'?'selected':''}>En correction</option><option value="corrige" ${ann==='corrige'?'selected':''}>Corrigé</option></select><input id="ann-comment-${f.id}" class="mini-input" placeholder="Commentaire..." style="flex:1;min-width:180px"><button class="btn-action btn-detail" onclick="annotateFinding(${f.id})">Annoter</button><button class="btn-action" onclick="loadFindingComments(${f.id})">Commentaires</button></div><div id="comments-${f.id}" class="finding-comments"></div>`:`<div class="hint2">Annotation disponible après sauvegarde en base.</div>`}</div>`;
+      }).join('')||'<div class="hint2">Aucun finding à afficher.</div>'}
+      <div class="act-row2">${scanIdForExport?`<a class="btn-export" href="/api/report/${scanIdForExport}/markdown" download>⬇ MD</a><a class="btn-export" href="/api/report/${scanIdForExport}/json" download>⬇ JSON</a><a class="btn-export" href="/api/report/${scanIdForExport}/pdf" download>⬇ PDF</a>`:'<span class="hint2">Pas de scan courant disponible.</span>'}</div>`;
+  } catch (e) {
+    console.error('renderResults error', e);
+    document.getElementById('results-content').innerHTML = '<div class="hint2">Erreur lors du rendu du rapport. Vérifiez la console.</div>';
+  }
 }
 
 renderOwasp(); renderTools();

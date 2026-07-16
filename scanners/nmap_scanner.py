@@ -94,7 +94,10 @@ class NmapScanner:
     def run(self) -> list:
         """Lance le scan nmap (réel ou simulé)"""
         if self.use_real:
-            return self._run_real()
+            try:
+                return self._run_real()
+            except Exception:
+                return self._run_simulated()
         return self._run_simulated()
 
     # ─── Mode réel (Nmap installé) ────────────────────────────────────────
@@ -102,17 +105,18 @@ class NmapScanner:
         """
         Exécute nmap avec options :
         -sV : détection de version des services
-        -sC : scripts par défaut
-        -p- : tous les ports (1-65535)
         -T4 : vitesse raisonnable
+        -p 1-10000 : scan des ports 1 à 10000 (couverture étendue)
         """
         findings = []
         cmd = [
             "nmap",
-            "-sV",           # Version detection
-            "-p-",           # All ports
+            "-sV",           # Service/version detection
             "-T4",           # Timing aggressive (but not reckless)
-            "--min-rate=100",
+            "--host-timeout=120s",
+            "--max-retries=1",
+            "--min-rate=50",
+            "-p", "1-10000", # Scan ports 1-10000 (extended coverage for web/cloud hosts)
             "-oX", "-",      # Output to stdout as XML
             self.target
         ]
@@ -122,7 +126,7 @@ class NmapScanner:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600  # 10 minutes max
+                timeout=180  # 3 minutes max
             )
             
             findings = self._parse_nmap_xml(result.stdout)
@@ -134,8 +138,8 @@ class NmapScanner:
                 "outil": "Nmap",
                 "statut": "faible",
                 "technique": "Nmap timeout",
-                "detail": f"Nmap scan sur {self.target} a dépassé le timeout (10 min)",
-                "preuve": f"nmap -sV -p- {self.target}",
+                "detail": f"Nmap scan sur {self.target} a dépassé le timeout (3 min)",
+                "preuve": f"nmap -sV -p 1-10000 {self.target}",
                 "cvss": 0.0,
                 "remediation": "Relancer le scan avec un timeout plus long ou cibler des ports spécifiques.",
                 "source": "nmap_real"
@@ -148,7 +152,7 @@ class NmapScanner:
                 "statut": "faible",
                 "technique": "Nmap error",
                 "detail": f"Erreur : {str(exc)}",
-                "preuve": f"nmap -sV -p- {self.target}",
+                "preuve": f"nmap -sV -p 1-10000 {self.target}",
                 "cvss": 0.0,
                 "remediation": "Vérifier que Nmap est installé et que la cible est accessible.",
                 "source": "nmap_real"

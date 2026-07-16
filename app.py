@@ -401,11 +401,55 @@ def get_scan_status(scan_id):
 def download_report(scan_id, fmt):
     if not can_access_scan(scan_id):
         return jsonify({"error": "Accès refusé."}), 403
+    
+    # 1. D'abord, essayer de récupérer depuis le cache mémoire (scan en cours)
     session = scan_sessions.get(scan_id)
-    if not session or session["status"] != "done":
-        return jsonify({"error": "Scan non terminé"}), 404
+    if session and session["status"] == "done" and session.get("results"):
+        results = session["results"]
+    else:
+        # 2. Sinon, reconstruire le rapport depuis la base de données
+        scan = db.get_scan(scan_id)
+        if not scan:
+            return jsonify({"error": "Scan introuvable"}), 404
+        if scan.get("status") != "done":
+            return jsonify({"error": "Scan non terminé"}), 404
+        
+        findings = db.get_findings_for_scan(scan_id) or []
+        results = db.get_results(scan_id)
+        
+        if not results and not findings:
+            return jsonify({"error": "Aucun résultat disponible pour ce scan"}), 404
+        
+        # Reconstruire le dictionnaire de résultats complet
+        if results:
+            target = results.get("target", scan.get("target", ""))
+            tools_used = results.get("tools_used", [])
+            score = results.get("score", scan.get("score", 0))
+            risk_level = results.get("risk_level", scan.get("risk_level", "Moyen"))
+            stats = results.get("stats", {})
+        else:
+            target = scan.get("target", "")
+            tools_used = []
+            score = scan.get("score", 0)
+            risk_level = scan.get("risk_level", "Moyen")
+            stats = {}
+        
+        # Déchiffrer la cible si nécessaire
+        try:
+            target = decrypt(target) if target and target.startswith("gAAAAA") else target
+        except Exception:
+            pass
+        
+        results = {
+            "target": target,
+            "tools_used": tools_used,
+            "score": score,
+            "risk_level": risk_level,
+            "stats": stats,
+            "findings": findings
+        }
 
-    gen = ReportGenerator(session["results"])
+    gen = ReportGenerator(results)
     if fmt == "pdf":
         content = gen.to_pdf()
         if not isinstance(content, bytes):
@@ -1291,4 +1335,4 @@ def gdpr_forget():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, threaded=True, port=5000)
+    app.run(host='0.0.0.0', debug=True, threaded=True, port=5000)
