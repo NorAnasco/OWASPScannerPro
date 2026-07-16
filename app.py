@@ -583,18 +583,39 @@ def build_final_report(target, findings, tools_used):
     crit = sum(1 for f in findings if f.get("statut") == "critique")
     high = sum(1 for f in findings if f.get("statut") == "élevé")
     med  = sum(1 for f in findings if f.get("statut") == "moyen")
+    low  = sum(1 for f in findings if f.get("statut") == "faible")
     ok   = sum(1 for f in findings if f.get("statut") == "ok")
 
-    # Score : 100 - pénalités
-    score = max(0, 100 - crit * 20 - high * 8 - med * 3)
-    risk = "Critique" if crit > 0 else "Élevé" if high > 0 else "Moyen" if med > 0 else "Faible"
+    owasp_weights = {
+        "A01": 1.5,
+        "A02": 1.2,
+        "A03": 1.3,
+        "A04": 1.4,
+        "A05": 1.5,
+        "A07": 1.4,
+        "A08": 1.3,
+    }
+
+    def _owasp_weight(owasp_id: str) -> float:
+        return owasp_weights.get((owasp_id or "").upper(), 1.0)
+
+    def _cvss(f) -> float:
+        try:
+            return float(f.get("cvss") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    penalty = sum(_cvss(f) * _owasp_weight(f.get("owasp_id")) / 10 for f in findings)
+    score = max(0, round(100 - penalty, 1))
+
+    risk = "Critique" if crit > 0 else "Élevé" if high > 0 else "Moyen" if med > 0 else "Faible" if low > 0 else "Faible"
 
     return {
         "target": target,
         "tools_used": tools_used,
         "score": score,
         "risk_level": risk,
-        "stats": {"critique": crit, "élevé": high, "moyen": med, "ok": ok},
+        "stats": {"critique": crit, "élevé": high, "moyen": med, "faible": low, "ok": ok},
         "findings": findings
     }
 
