@@ -1,11 +1,10 @@
 """
 Scanner OWASP ZAP — utilise l'API REST de ZAP (zapv2).
-Nécessite : pip install python-owasp-zap-v2.4
+Nécessite : pip install python-owasp-zap-v2.4 requests
 ZAP doit tourner en mode daemon : zap.sh -daemon -port 8080 -host 127.0.0.1
 """
 import time
-import subprocess
-import shutil
+import requests
 from zapv2 import ZAPv2
 from config import ZAP_HOST, ZAP_PORT, ZAP_API_KEY, ZAP_USE_REAL
 
@@ -18,7 +17,6 @@ RISK_MAP = {
     "Informational": "faible"
 }
 
-# Mapping ZAP CWE/WASC → OWASP ID (simplifié)
 # Mapping CWE → OWASP Top 10 2025
 # Sources : https://owasp.org/Top10/2025/
 CWE_TO_OWASP = {
@@ -43,15 +41,49 @@ CWE_TO_OWASP = {
     "345": "A08", "346": "A08", "502": "A08",
 }
 
+# Timeouts (secondes)
+SPIDER_TIMEOUT = 300
+PASSIVE_SCAN_TIMEOUT = 120
+ACTIVE_SCAN_TIMEOUT = 900
+POLL_INTERVAL = 2
+
 
 class ZapScanner:
     def __init__(self, target: str):
         self.target = target
-        self.use_real = ZAP_USE_REAL and shutil.which("zap.sh") is not None
+        self.use_real = ZAP_USE_REAL and self._is_zap_running()
+
+    # ─── Détection du daemon ────────────────────────────────────────────
+    def _is_zap_running(self) -> bool:
+        """
+        Vérifie que le daemon ZAP répond réellement sur ZAP_HOST:ZAP_PORT,
+        plutôt que de simplement vérifier la présence du binaire zap.sh.
+        """
+        try:
+            # Ping rapide sur le port avant d'instancier ZAPv2 (qui n'a pas
+            # de timeout court configurable facilement)
+            requests.get(f"http://{ZAP_HOST}:{ZAP_PORT}", timeout=2)
+        except requests.exceptions.RequestException:
+            return False
+
+        try:
+            zap = ZAPv2(
+                apikey=ZAP_API_KEY,
+                proxies={"http": f"http://{ZAP_HOST}:{ZAP_PORT}",
+                         "https": f"http://{ZAP_HOST}:{ZAP_PORT}"}
+            )
+            _ = zap.core.version  # lève une exception si l'API ne répond pas correctement
+            return True
+        except Exception:
+            return False
 
     def run(self, owasp_ids: list) -> list:
         if self.use_real:
-            return self._run_real(owasp_ids)
+            try:
+                return self._run_real(owasp_ids)
+            except Exception as e:
+                print(f"[ZapScanner] Échec du mode réel ({e}), fallback en mode simulé")
+                return self._run_simulated(owasp_ids)
         return self._run_simulated(owasp_ids)
 
     # ─── Mode réel ────────────────────────────────────────────────────────
@@ -62,25 +94,41 @@ class ZapScanner:
                      "https": f"http://{ZAP_HOST}:{ZAP_PORT}"}
         )
 
-        # Spider
-        spider_id = zap.spider.scan(self.target, apikey=ZAP_API_KEY)
-        while int(zap.spider.status(spider_id)) < 100:
-            time.sleep(2)
+        # Spider, restreint au sous-arbre de la cible pour ne pas suivre
+        # les liens externes hors scope
+        spider_id = zap.spider.scan(
+            self.target, contextname=None, subtreeonly=True, apikey=ZAP_API_KEY
+        )
+        self._poll(lambda: zap.spider.status(spider_id), SPIDER_TIMEOUT, "spider")
 
-        # Scan passif (automatique après spider)
-        time.sleep(3)
+        # Scan passif — attendre que la file de records à analyser soit vide,
+        # plutôt qu'un sleep arbitraire
+        self._poll(
+            lambda: 100 if int(zap.pscan.records_to_scan) == 0 else 0,
+            PASSIVE_SCAN_TIMEOUT, "passive scan"
+        )
 
         # Scan actif
         ascan_id = zap.ascan.scan(self.target, apikey=ZAP_API_KEY)
-        while int(zap.ascan.status(ascan_id)) < 100:
-            time.sleep(3)
+        self._poll(lambda: zap.ascan.status(ascan_id), ACTIVE_SCAN_TIMEOUT, "active scan")
 
         alerts = zap.core.alerts(baseurl=self.target)
         return [self._alert_to_finding(a) for a in alerts]
 
+    def _poll(self, status_fn, timeout: int, label: str):
+        """Poll une fonction de statut ZAP (0-100) jusqu'à complétion ou timeout."""
+        start = time.time()
+        while int(status_fn()) < 100:
+            if time.time() - start > timeout:
+                raise TimeoutError(f"Timeout ZAP dépassé pendant : {label}")
+            time.sleep(POLL_INTERVAL)
+
     def _alert_to_finding(self, alert: dict) -> dict:
         cwe = str(alert.get("cweid", ""))
-        owasp_id = CWE_TO_OWASP.get(cwe, "A05")
+        owasp_id = CWE_TO_OWASP.get(cwe)
+        if owasp_id is None:
+            owasp_id = "non-classé"
+            print(f"[ZapScanner] CWE-{cwe} non mappé vers un ID OWASP — à ajouter au mapping")
         return {
             "owasp_id": owasp_id,
             "nom": alert.get("name", "Alerte ZAP"),
@@ -98,13 +146,12 @@ class ZapScanner:
         return {"High": 8.5, "Medium": 5.5, "Low": 3.0, "Informational": 1.0}.get(
             risk.split(" ")[0], 3.0)
 
-    # ─── Mode simulé (ZAP non installé) ───────────────────────────────────
+    # ─── Mode simulé (ZAP non installé / non joignable) ───────────────────
     def _run_simulated(self, owasp_ids: list) -> list:
         """
         Effectue de vraies requêtes HTTP sur la cible et analyse
         les réponses pour détecter des indicateurs de vulnérabilités.
         """
-        import requests
         findings = []
         headers_to_check = {
             # A02:2025 Security Misconfiguration (ex-A05:2021)
@@ -119,8 +166,10 @@ class ZapScanner:
             "X-XSS-Protection": ("A05", "Protection XSS navigateur non activée", "moyen", 4.0),
         }
         try:
-            resp = requests.get(self.target, timeout=10, verify=False,
-                                allow_redirects=True)
+            # verify=True (implicite) pour que la détection SSLError ci-dessous
+            # ait un sens — verify=False annulerait l'exception
+            resp = requests.get(self.target, timeout=10, allow_redirects=True)
+
             # Headers manquants
             for header, (owasp_id, detail, statut, cvss) in headers_to_check.items():
                 if owasp_id in owasp_ids and header not in resp.headers:
@@ -138,7 +187,7 @@ class ZapScanner:
                     })
 
             # TLS / HTTPS
-            if "A04" in owasp_ids and self.target.startswith("http://"):  # A04:2025 Cryptographic Failures
+            if "A04" in owasp_ids and self.target.startswith("http://"):
                 findings.append({
                     "owasp_id": "A04",
                     "nom": "HTTP non chiffré détecté",
@@ -152,13 +201,13 @@ class ZapScanner:
                     "source": "zap_passive"
                 })
 
-            # Server version disclosure
-            if "A02" in owasp_ids:  # A02:2025 Security Misconfiguration
+            # Version serveur exposée — corrigé : filtre et classification cohérents (A02)
+            if "A02" in owasp_ids:
                 server = resp.headers.get("Server", "")
                 powered = resp.headers.get("X-Powered-By", "")
                 if server or powered:
                     findings.append({
-                        "owasp_id": "A05",
+                        "owasp_id": "A02",
                         "nom": "Version serveur exposée",
                         "outil": "OWASP ZAP",
                         "statut": "moyen",
@@ -176,17 +225,16 @@ class ZapScanner:
                     issues = []
                     if not cookie.secure:
                         issues.append("Secure flag absent")
-                    
-                    # Vérification HttpOnly : regarder dans les attributs étendus du cookie
+
                     cookie_rest = getattr(cookie, '_rest', {})
                     httponly_present = any("httponly" in k.lower() for k in cookie_rest.keys())
                     if not httponly_present:
                         issues.append("HttpOnly flag absent")
-                    
+
                     samesite_present = any("samesite" in k.lower() for k in cookie_rest.keys())
                     if not samesite_present:
                         issues.append("SameSite non défini")
-                    
+
                     if issues:
                         findings.append({
                             "owasp_id": "A07",
@@ -202,7 +250,7 @@ class ZapScanner:
                         })
 
         except requests.exceptions.SSLError:
-            if "A04" in owasp_ids:  # A04:2025 Cryptographic Failures
+            if "A04" in owasp_ids:
                 findings.append({
                     "owasp_id": "A04",
                     "nom": "Erreur certificat TLS",
@@ -215,7 +263,7 @@ class ZapScanner:
                     "remediation": "Renouveler le certificat via Let's Encrypt ou une CA reconnue.",
                     "source": "zap_passive"
                 })
-        except Exception:
-            pass
+        except requests.exceptions.RequestException as e:
+            print(f"[ZapScanner] Erreur réseau pendant le scan simulé : {e}")
 
         return findings
